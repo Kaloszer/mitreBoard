@@ -21,13 +21,25 @@ interface SubTechniqueItemProps {
   onViewRulesClick: (technique: Technique) => void;
 }
 
-// Define color logic locally (same as in TechniqueItem)
+// Define color logic locally (using only dark theme classes)
 const getSubTechniqueColors = (count: number): { bg: string; text: string } => {
-  if (count === 0) return { bg: "bg-slate-200 dark:bg-gray-800", text: "text-gray-600 dark:text-gray-400" }; // Changed light mode 0-rule bg
-  if (count >= 1 && count <= 2) return { bg: "bg-yellow-100 dark:bg-yellow-900", text: "text-yellow-900 dark:text-yellow-100" };
-  if (count >= 3 && count <= 4) return { bg: "bg-sky-100 dark:bg-sky-900", text: "text-sky-900 dark:text-sky-100" };
-  if (count >= 5) return { bg: "bg-blue-100 dark:bg-blue-900", text: "text-blue-900 dark:text-blue-100" };
-  return { bg: "bg-muted", text: "text-muted-foreground" }; // Fallback
+  if (count === 0) return {
+    bg: "bg-gray-800/30",
+    text: "text-gray-300"
+  };
+  if (count >= 1 && count <= 2) return {
+    bg: "bg-amber-950/80",
+    text: "text-amber-200"
+  };
+  if (count >= 3 && count <= 4) return {
+    bg: "bg-sky-950/80",
+    text: "text-sky-200"
+  };
+  if (count >= 5) return {
+    bg: "bg-blue-950/80",
+    text: "text-blue-200"
+  };
+  return { bg: "bg-muted", text: "text-muted-foreground" }; // Fallback uses theme variables
 };
 
 export function SubTechniqueItem({
@@ -36,7 +48,7 @@ export function SubTechniqueItem({
   getExternalId,
   // Removed getBackgroundColor, getTextColor
   onViewRulesClick
-}: SubTechniqueItemProps) {
+}: Readonly<SubTechniqueItemProps>) {
   const subId = getExternalId(subTechnique);
   console.log(`DEBUG: SubTechniqueItem - ID: ${subId}, Count: ${ruleCount}`); // DEBUG: Log ID and count
   // Calculate colors locally
@@ -45,10 +57,9 @@ export function SubTechniqueItem({
   return (
     // Added pl-4 for indentation
     <div key={subId} className={cn(
-        "flex justify-between items-center text-xs p-1.5 pl-4 rounded-sm border transition-colors duration-150",
+        "flex justify-between items-center text-xs p-2 pl-4 rounded-sm border transition-colors duration-150",
         subBgColor, // Background based on count
-        "border" // Always apply border class
-        // Removed group class
+        "border-border/40" // Lighter border for sub-techniques
     )}>
       {/* Sub-technique Name and ID */}
       <div className="flex-1 mr-1 min-w-0"> {/* Added min-w-0 */}
@@ -62,10 +73,10 @@ export function SubTechniqueItem({
         aria-label={ruleCount > 0 ? `View ${ruleCount} rules for ${subTechnique.name}` : `No rules for ${subTechnique.name}`}
         className={cn(
           "flex-shrink-0 inline-flex items-center justify-center h-5 w-5 rounded-full text-[10px] font-medium border transition-colors",
-          // Theme-aware styling for the badge
+          // Theme-aware styling for the badge - Changed text-primary to text-slate-100 and text-muted-foreground to text-slate-400
           ruleCount > 0
-            ? "bg-primary/10 border-primary/30 text-primary cursor-pointer hover:bg-primary/20"
-            : "bg-muted border-border text-muted-foreground cursor-not-allowed",
+            ? "bg-primary/10 border-primary/30 text-slate-100 cursor-pointer hover:bg-primary/20" // Changed text-primary to text-slate-100
+            : "bg-muted border-border text-slate-400 cursor-not-allowed", // Changed text-muted-foreground to text-slate-400
           // Focus styles
           "focus:outline-none focus:ring-1 focus:ring-ring focus:ring-offset-0" // Adjusted focus ring for smaller size
         )}

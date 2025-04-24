@@ -22,13 +22,25 @@ interface TechniqueItemProps {
   onViewRulesClick: (technique: Technique) => void;
 }
 
-// Define color logic locally
+// Define color logic locally (using only dark theme classes)
 const getTechniqueColors = (count: number): { bg: string; text: string } => {
-  if (count === 0) return { bg: "bg-slate-200 dark:bg-gray-800", text: "text-gray-600 dark:text-gray-400" }; // Changed light mode 0-rule bg
-  if (count >= 1 && count <= 2) return { bg: "bg-yellow-100 dark:bg-yellow-900", text: "text-yellow-900 dark:text-yellow-100" };
-  if (count >= 3 && count <= 4) return { bg: "bg-sky-100 dark:bg-sky-900", text: "text-sky-900 dark:text-sky-100" };
-  if (count >= 5) return { bg: "bg-blue-100 dark:bg-blue-900", text: "text-blue-900 dark:text-blue-100" };
-  return { bg: "bg-muted", text: "text-muted-foreground" }; // Fallback
+  if (count === 0) return {
+    bg: "bg-gray-800/50",
+    text: "text-gray-300"
+  };
+  if (count >= 1 && count <= 2) return {
+    bg: "bg-amber-950",
+    text: "text-amber-200"
+  };
+  if (count >= 3 && count <= 4) return {
+    bg: "bg-sky-950",
+    text: "text-sky-200"
+  };
+  if (count >= 5) return {
+    bg: "bg-blue-950",
+    text: "text-blue-200"
+  };
+  return { bg: "bg-muted", text: "text-muted-foreground" }; // Fallback uses theme variables
 };
 
 
@@ -38,7 +50,7 @@ export function TechniqueItem({
   getExternalId,
   // Removed getBackgroundColor, getTextColor
   onViewRulesClick
-}: TechniqueItemProps) {
+}: Readonly<TechniqueItemProps>) {
   const techId = getExternalId(technique);
   const techCount = ruleCounts[techId] ?? 0;
   console.log(`DEBUG: TechniqueItem - ID: ${techId}, Count: ${techCount}`); // DEBUG: Log ID and count
@@ -71,10 +83,10 @@ export function TechniqueItem({
           aria-label={techCount > 0 ? `View ${techCount} rules for ${technique.name}` : `No rules for ${technique.name}`}
           className={cn(
             "flex-shrink-0 inline-flex items-center justify-center h-6 w-6 rounded-full text-xs font-medium border transition-colors",
-            // Theme-aware styling for the badge
+            // Theme-aware styling for the badge - Changed text-primary to text-slate-100 and text-muted-foreground to text-slate-400
             techCount > 0
-              ? "bg-primary/10 border-primary/30 text-primary cursor-pointer hover:bg-primary/20"
-              : "bg-muted border-border text-muted-foreground cursor-not-allowed",
+              ? "bg-primary/10 border-primary/30 text-slate-100 cursor-pointer hover:bg-primary/20" // Changed text-primary to text-slate-100
+              : "bg-muted border-border text-slate-400 cursor-not-allowed", // Changed text-muted-foreground to text-slate-400
             // Focus styles
             "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
           )}

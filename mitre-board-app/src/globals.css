@@ -47,6 +47,7 @@
     --border: 240 3.7% 15.9%;
     --input: 240 3.7% 15.9%;
     --ring: 240 4.9% 83.9%;
+    --background: 240 10% 3.9%; /* Add background variable for dark mode */
   }
 }
 
@@ -55,6 +56,6 @@
     /* @apply border-border; // Removed this line */
   }
   body {
-    /* @apply bg-background text-foreground; // Removed this line - handled by preflight */
+    /* @apply bg-slate-950 text-foreground; Restore background and foreground */
   }
 }

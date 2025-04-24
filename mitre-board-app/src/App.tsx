@@ -184,8 +184,7 @@ function App() {
 
   // JSX
   return (
-    // Use theme background and foreground
-    <div className="min-h-screen bg-background text-foreground p-4 md:p-6 lg:p-8">
+    <div className="min-h-screen bg-slate-950 text-foreground p-4 md:p-6 lg:p-8"> {/* Applied bg-slate-950 and text-foreground here */}
       <div className="max-w-[1400px] mx-auto">
         <MitreBoardHeader />
 
@@ -231,8 +230,8 @@ function App() {
       </div>
 
       <Dialog open={isRuleModalOpen} onOpenChange={handleModalOpenChange}>
-        {/* Use standard DialogContent styling which respects theme */}
-        <DialogContent className="sm:max-w-3xl md:max-w-4xl lg:max-w-5xl xl:max-w-6xl max-h-[90vh] flex flex-col bg-white dark:bg-slate-200 border shadow-lg">
+        {/* Re-applying explicit bg-slate-900 override */}
+        <DialogContent className="sm:max-w-3xl md:max-w-4xl lg:max-w-5xl xl:max-w-6xl max-h-[90vh] flex flex-col bg-slate-900 border shadow-lg">
           {/* Use standard DialogHeader styling */}
           <DialogHeader className="pr-16 relative"> {/* Removed border, DialogHeader might handle it */}
             {/* Use standard DialogTitle styling */}
@@ -247,15 +246,16 @@ function App() {
                   >
                     <ArrowLeft size={18} />
                   </Button>
-                  <Code size={18} className="text-primary" /> {/* Theme primary color */}
-                  <span className="truncate">Rule: {selectedRule?.title ?? 'N/A'}</span>
-                  <span className="text-sm text-muted-foreground ml-2">({selectedRule?.id ?? 'N/A'})</span>
+                  <Code size={18} className="text-slate-100" /> {/* Changed text-primary to text-slate-100 */}
+                  <span className="truncate text-slate-100">Rule: {selectedRule?.title ?? 'N/A'}</span> {/* Added text-slate-100 */}
+                  <span className="text-sm text-slate-400 ml-2">({selectedRule?.id ?? 'N/A'})</span> {/* Changed text-muted-foreground to text-slate-400 */}
                 </>
               ) : (
                 <>
-                  <List size={18} className="text-primary" /> {/* Theme primary color */}
-                  <span>Rules for Technique: {selectedTechniqueForRules?.name ?? 'N/A'}</span>
-                  <span className="text-sm text-muted-foreground ml-2">({selectedTechniqueForRules?.id ?? 'N/A'})</span>
+                  <List size={18} className="text-slate-100" /> {/* Changed text-primary to text-slate-100 */}
+                  {/* Applying explicit text-slate-100 */}
+                  <span className="text-slate-100">Rules for Technique: {selectedTechniqueForRules?.name ?? 'N/A'}</span>
+                  <span className="text-sm text-slate-400 ml-2">({selectedTechniqueForRules?.id ?? 'N/A'})</span> {/* Changed text-muted-foreground to text-slate-400 */}
                 </>
               )}
             </DialogTitle>
@@ -291,8 +291,8 @@ function App() {
                     >
                       <Copy size={16} />
                     </Button>
-                    {/* Use theme colors for code block */}
-                    <pre className="bg-muted/50 p-4 rounded-md text-sm text-foreground whitespace-pre-wrap break-words font-mono max-h-[65vh] overflow-auto">
+                    {/* Use theme colors for code block - Changed background to solid slate-800, text to slate-100 */}
+                    <pre className="bg-slate-800 p-4 rounded-md text-sm text-slate-100 whitespace-pre-wrap break-words font-mono max-h-[65vh] overflow-auto"> {/* Changed text-foreground to text-slate-100 */}
                       {selectedRuleContent}
                     </pre>
                   </div>
@@ -311,8 +311,8 @@ function App() {
                   </div>
                 )}
                 {ruleLoadingState !== 'loadingList' && rulesForSelectedTechnique && rulesForSelectedTechnique.length > 0 && (
-                  // Add background, padding, rounding, and border to the rule list container
-                  <div className="space-y-2 bg-muted p-4 rounded-md border border-border">
+                  // Add background, padding, rounding, and border to the rule list container - Changed text to slate-100
+                  <div className="space-y-2 bg-slate-800 text-slate-100 p-4 rounded-md border border-border"> {/* Changed text-foreground to text-slate-100 */}
                     {rulesForSelectedTechnique?.map((rule) => (
                       // Use theme colors for rule button
                       <button
@@ -320,11 +320,11 @@ function App() {
                         onClick={() => handleRuleClick(rule)}
                         className="w-full text-left p-3 rounded-md bg-background hover:bg-muted transition-colors border border-border focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 focus:ring-offset-background"
                       >
-                        {/* Format: title - description - id */}
-                        <p className="font-medium text-foreground truncate">
+                        {/* Format: title - description - id - Explicitly set rule title color */}
+                        <p className="font-medium text-slate-100 truncate"> {/* Changed text-foreground to text-slate-100 */}
                           {rule.title ?? rule.id}
                         </p>
-                        <p className="text-xs text-muted-foreground mt-1 truncate">
+                        <p className="text-xs text-muted-foreground mt-1 truncate"> {/* Keep description muted */}
                           {`${rule.description ?? 'No description available.'} - ${rule.id}`}
                         </p>
                         {/* Removed the separate ID line */}
@@ -347,8 +347,8 @@ function App() {
           <DialogFooter className="pt-3 mt-auto">
             {(!selectedRule || rulesForSelectedTechnique?.length === 0) && (
               <DialogClose asChild>
-                {/* Use standard Button styling */}
-                <Button variant="outline">Close</Button>
+                {/* Use standard Button styling - Added text-slate-100 */}
+                <Button variant="outline" className="text-slate-100">Close</Button>
               </DialogClose>
             )}
             {selectedRule && (
@@ -356,6 +356,7 @@ function App() {
               <Button
                 variant="outline"
                 onClick={handleBackToList}
+                className="text-slate-100" // Added text-slate-100
               >
                 <ArrowLeft size={16} className="mr-2" /> Back to List
               </Button>
