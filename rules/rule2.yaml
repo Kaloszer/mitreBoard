@@ -1,0 +1,29 @@
+title: Dummy Rule 2 - Persistence Mechanisms
+id: dummy-002
+status: experimental
+description: Detects common persistence techniques like scheduled tasks.
+author: Claude
+date: 2025/04/24
+logsource:
+    category: registry_event # Or process_creation for schtasks
+    product: windows
+detection:
+    # Simplified detection logic
+    keywords:
+        - 'schtasks'
+        - '/create'
+        - 'Run' # Registry key
+    condition: keywords
+falsepositives:
+    - Legitimate software installation or updates
+level: high
+tags:
+    - attack.persistence
+    - attack.t1547
+    - attack.t1053.005
+tactics:
+    - TA0003 # Persistence
+relevantTechniques:
+    - T1547 # Boot or Logon Autostart Execution
+    - T1053 # Scheduled Task/Job
+    - T1053.005 # Scheduled Task
