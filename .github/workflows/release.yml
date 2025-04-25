@@ -44,6 +44,9 @@ jobs:
     name: Build Application
     needs: determine-version # Wait for version determination
     runs-on: ubuntu-latest
+    permissions:
+      contents: read # Needed for checkout
+      actions: write # Needed for upload-artifact
     outputs:
       build_dir: ${{ steps.build.outputs.build_dir }}
 
