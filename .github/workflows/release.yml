@@ -47,6 +47,7 @@ jobs:
     permissions:
       contents: write
     strategy:
+      fail-fast: false
       matrix:
         include:
           - target: linux-arm64
@@ -62,7 +63,7 @@ jobs:
           - target: windows-x64-modern
             binary_suffix: windows-x64-modern.exe
             output_name: mitre-board.exe
-            archive_cmd: zip -r mitre-board-windows-x64-modern.zip release-windows-x64
+            archive_cmd: zip -r mitre-board-windows-x64-modern.zip release-windows-x64-modern # Corrected directory name
             archive_name: mitre-board-windows-x64-modern.zip
           - target: mac-x64
             binary_suffix: mac-x64
