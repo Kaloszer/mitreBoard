@@ -63,7 +63,7 @@ jobs:
           - target: windows-x64-modern
             binary_suffix: windows-x64-modern.exe
             output_name: mitre-board.exe
-            archive_cmd: zip -r mitre-board-windows-x64-modern.zip release-windows-x64-modern .
+            archive_cmd: cd release-windows-x64-modern && zip -r ../mitre-board-windows-x64-modern.zip .
             archive_name: mitre-board-windows-x64-modern.zip
           - target: mac-x64
             binary_suffix: mac-x64
@@ -95,7 +95,7 @@ jobs:
       - name: Upload Release Asset (${{ matrix.target }})
         uses: actions/upload-artifact@v4
         with:
-          name: release-asset-${{ matrix.target }}
+          name: ${{ matrix.archive_name }} # Use the actual archive name as artifact name
           path: ${{ matrix.archive_name }}
           retention-days: 1
 
@@ -110,8 +110,9 @@ jobs:
       - name: Download all release assets
         uses: actions/download-artifact@v4
         with:
-          pattern: release-asset-*
+          # No pattern needed, download all artifacts from the run
           path: release-assets
+          merge-multiple: true # Ensure archives are directly in release-assets
 
       - name: Create Release and Upload Assets
         uses: softprops/action-gh-release@v2
