@@ -140,24 +140,28 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-
     steps:
-      - name: Download Release Archives
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download All Artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: | # Match only the final archives
-            mitre-board-*.tar.gz
-            mitre-board-*.zip
           path: release-assets
-          merge-multiple: true # Ensure archives are directly in release-assets
+          # merge-multiple: true # Keep this, might still be useful depending on download structure
+
+      - name: List downloaded assets
+        run: ls -R release-assets
 
       - name: Create Release and Upload Assets
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.determine-version.outputs.new_tag }}
           name: Release ${{ needs.determine-version.outputs.new_tag }}
-          files: release-assets/*
-          make_latest: true # Mark this as the latest release
+          files: |
+            release-assets/*.tar.gz
+            release-assets/*.zip
+          make_latest: true
 
       - name: Push new Git tag
         run: |
