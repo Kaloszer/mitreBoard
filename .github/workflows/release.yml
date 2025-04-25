@@ -2,12 +2,47 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*.*.*'
+    branches:
+      - main # Trigger on push to main branch
 
 jobs:
+  determine-version:
+    name: Determine Next Version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # Need read access to fetch tags
+    outputs:
+      new_tag: ${{ steps.version.outputs.new_tag }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history for all tags
+
+      - name: Calculate next version
+        id: version
+        run: |
+          git fetch --tags # Ensure all tags are fetched
+          # Get the latest tag matching v*.*.*, default to v0.0.0 if none exists
+          latest_tag=$(git describe --tags --abbrev=0 --match "v*.*.*" 2>/dev/null || echo "v0.0.0")
+          echo "Latest tag: $latest_tag"
+
+          # Remove 'v' prefix
+          version_parts=$(echo "${latest_tag#v}" | tr '.' '\n')
+          major=$(echo "$version_parts" | sed -n 1p)
+          minor=$(echo "$version_parts" | sed -n 2p)
+          patch=$(echo "$version_parts" | sed -n 3p)
+
+          # Increment patch version
+          new_patch=$((patch + 1))
+          new_tag="v${major}.${minor}.${new_patch}"
+          echo "New tag: $new_tag"
+
+          echo "new_tag=$new_tag" >> $GITHUB_OUTPUT
+
   build:
     name: Build Application
+    needs: determine-version # Wait for version determination
     runs-on: ubuntu-latest
     outputs:
       build_dir: ${{ steps.build.outputs.build_dir }}
@@ -86,9 +121,9 @@ jobs:
       - name: Prepare artifact archive (${{ matrix.target }})
         run: |
           RELEASE_DIR="release-${{ matrix.target }}"
-          mkdir $RELEASE_DIR
+          mkdir -p $RELEASE_DIR/public # Create public directory
           cp build-output/mitre-board-${{ matrix.binary_suffix }} $RELEASE_DIR/${{ matrix.output_name }}
-          cp build-output/public/index.html $RELEASE_DIR/
+          cp build-output/public/index.html $RELEASE_DIR/public/ # Copy index.html into public
           cp -r build-output/dist $RELEASE_DIR/
           ${{ matrix.archive_cmd }}
 
@@ -101,20 +136,30 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: package-release
+    needs: [package-release, determine-version] # Wait for packaging and version
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - name: Download all release assets
+      - name: Download Release Archives
         uses: actions/download-artifact@v4
         with:
-          # No pattern needed, download all artifacts from the run
+          pattern: | # Match only the final archives
+            mitre-board-*.tar.gz
+            mitre-board-*.zip
           path: release-assets
           merge-multiple: true # Ensure archives are directly in release-assets
 
       - name: Create Release and Upload Assets
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.determine-version.outputs.new_tag }}
+          name: Release ${{ needs.determine-version.outputs.new_tag }}
           files: release-assets/*
+          make_latest: true # Mark this as the latest release
+
+      - name: Push new Git tag
+        run: |
+          git tag ${{ needs.determine-version.outputs.new_tag }}
+          git push origin ${{ needs.determine-version.outputs.new_tag }}
