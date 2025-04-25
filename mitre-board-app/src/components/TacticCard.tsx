@@ -1,6 +1,5 @@
-import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { TechniqueItem } from './TechniqueItem'; // Import the technique component
+import { TechniqueItem } from './TechniqueItem';
 
 // Define types for props - mirroring App.tsx structure
 interface Technique {

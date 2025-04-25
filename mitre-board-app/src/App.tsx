@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -34,7 +34,6 @@ interface MitreData {
 }
 
 function App() {
-  // State declarations
   const [mitreData, setMitreData] = useState<MitreData | null>(null);
   const [ruleCounts, setRuleCounts] = useState<Record<string, number>>({});
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -49,7 +48,6 @@ function App() {
   const [ruleLoadingState, setRuleLoadingState] = useState<'idle' | 'loadingList' | 'loadingContent' | 'error'>('idle');
   const [ruleError, setRuleError] = useState<string | null>(null);
 
-  // Fetch initial data
   useEffect(() => {
     async function fetchData() {
       setIsLoading(true);
@@ -68,7 +66,7 @@ function App() {
 
         setMitreData(mitreJson);
         setRuleCounts(countsJson);
-        console.log("DEBUG: Fetched rule counts:", countsJson); // DEBUG: Log fetched counts
+        console.log("DEBUG: Fetched rule counts:", countsJson);
       } catch (err) {
         console.error("Fetch error:", err);
         setError(err instanceof Error ? err.message : "An unknown error occurred");
@@ -87,14 +85,11 @@ function App() {
   const getTacticRuleCount = (tactic: Tactic): number => {
     return tactic.techniques.reduce((total, technique) => {
       const techId = getExternalId(technique);
-     return total + (ruleCounts[techId] ?? 0);
-   }, 0);
- };
+      return total + (ruleCounts[techId] ?? 0);
+    }, 0);
+  };
 
- // Removed getBackgroundColor and getTextColor functions as they are now local to components
-
-
- // Rule modal handlers
+  // Rule modal handlers
   const fetchRulesForTechnique = useCallback(async (techniqueId: string) => {
     setRuleLoadingState('loadingList');
     setRuleError(null);
@@ -126,11 +121,10 @@ function App() {
       // Fetch actual rule content (raw YAML/text) from the backend API
       const response = await fetch(`/api/rule-content?ruleId=${encodeURIComponent(ruleId)}`);
       if (!response.ok) {
-        // Try to get a more specific error message from the response body
         const errorText = await response.text();
         throw new Error(`Failed to fetch rule content: ${response.status} ${response.statusText} - ${errorText}`);
       }
-      const content = await response.text(); // Get content as raw text
+      const content = await response.text();
       setSelectedRuleContent(content);
       setRuleLoadingState('idle');
     } catch (err) {
@@ -144,10 +138,10 @@ function App() {
   const handleViewRulesClick = (technique: Technique) => {
     // Always use getExternalId to ensure the correct MITRE ID is used
     const techId = getExternalId(technique);
-    console.log("DEBUG: handleViewRulesClick - Technique:", technique, "Resolved ID:", techId); // DEBUG: Log technique and ID
+    console.log("DEBUG: handleViewRulesClick - Technique:", technique, "Resolved ID:", techId);
     setSelectedTechniqueForRules({ id: techId, name: technique.name });
     setIsRuleModalOpen(true);
-    fetchRulesForTechnique(techId); // Pass the correct ID to fetch rules
+    fetchRulesForTechnique(techId);
   };
 
   const handleRuleClick = (rule: { id: string; title: string; description: string }) => {
@@ -184,14 +178,13 @@ function App() {
 
   // JSX
   return (
-    <div className="min-h-screen bg-slate-950 text-foreground p-4 md:p-6 lg:p-8"> {/* Applied bg-slate-950 and text-foreground here */}
+    <div className="min-h-screen bg-slate-950 text-foreground p-4 md:p-6 lg:p-8">
       <div className="max-w-[1400px] mx-auto">
         <MitreBoardHeader />
 
         {isLoading && (
           <div className="flex items-center justify-center h-80">
             <div className="animate-pulse flex flex-col items-center">
-              {/* Use theme colors for spinner and text */}
               <div className="h-12 w-12 rounded-full border-4 border-primary border-t-transparent animate-spin mb-4"></div>
               <p className="text-muted-foreground">Loading MITRE data...</p>
             </div>
@@ -199,16 +192,15 @@ function App() {
         )}
 
         {error && (
-          // Use theme colors for error box
           <div className="p-8 bg-destructive/10 border border-destructive rounded-lg shadow text-center">
             <p className="text-destructive font-medium">Error loading data: {error}</p>
-              <Button
-                variant="destructive"
-                className="mt-4"
-                onClick={() => window.location.reload()}
-              >
-                Retry
-              </Button>
+            <Button
+              variant="destructive"
+              className="mt-4"
+              onClick={() => window.location.reload()}
+            >
+              Retry
+            </Button>
           </div>
         )}
 
@@ -219,52 +211,45 @@ function App() {
                 key={getExternalId(tactic)}
                 tactic={tactic}
                 ruleCounts={ruleCounts}
-                 getExternalId={getExternalId}
-                 getTacticRuleCount={getTacticRuleCount}
-                 // Removed getBackgroundColor, getTextColor props from TacticCard call
-                 onViewRulesClick={handleViewRulesClick}
-               />
-             ))}
+                getExternalId={getExternalId}
+                getTacticRuleCount={getTacticRuleCount}
+                onViewRulesClick={handleViewRulesClick}
+              />
+            ))}
           </div>
         )}
       </div>
 
       <Dialog open={isRuleModalOpen} onOpenChange={handleModalOpenChange}>
-        {/* Re-applying explicit bg-slate-900 override */}
         <DialogContent className="sm:max-w-3xl md:max-w-4xl lg:max-w-5xl xl:max-w-6xl max-h-[90vh] flex flex-col bg-slate-900 border shadow-lg">
-          {/* Use standard DialogHeader styling */}
-          <DialogHeader className="pr-16 relative"> {/* Removed border, DialogHeader might handle it */}
-            {/* Use standard DialogTitle styling */}
+          <DialogHeader className="pr-16 relative">
             <DialogTitle className="text-xl font-medium flex items-center gap-2">
               {selectedRule ? (
                 <>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-7 w-7 mr-2 text-muted-foreground hover:text-foreground" // Theme colors
+                    className="h-7 w-7 mr-2 text-muted-foreground hover:text-foreground"
                     onClick={handleBackToList}
                   >
                     <ArrowLeft size={18} />
                   </Button>
-                  <Code size={18} className="text-slate-100" /> {/* Changed text-primary to text-slate-100 */}
-                  <span className="truncate text-slate-100">Rule: {selectedRule?.title ?? 'N/A'}</span> {/* Added text-slate-100 */}
-                  <span className="text-sm text-slate-400 ml-2">({selectedRule?.id ?? 'N/A'})</span> {/* Changed text-muted-foreground to text-slate-400 */}
+                  <Code size={18} className="text-slate-100" />
+                  <span className="truncate text-slate-100">Rule: {selectedRule?.title ?? 'N/A'}</span>
+                  <span className="text-sm text-slate-400 ml-2">({selectedRule?.id ?? 'N/A'})</span>
                 </>
               ) : (
                 <>
-                  <List size={18} className="text-slate-100" /> {/* Changed text-primary to text-slate-100 */}
-                  {/* Applying explicit text-slate-100 */}
+                  <List size={18} className="text-slate-100" />
                   <span className="text-slate-100">Rules for Technique: {selectedTechniqueForRules?.name ?? 'N/A'}</span>
-                  <span className="text-sm text-slate-400 ml-2">({selectedTechniqueForRules?.id ?? 'N/A'})</span> {/* Changed text-muted-foreground to text-slate-400 */}
+                  <span className="text-sm text-slate-400 ml-2">({selectedTechniqueForRules?.id ?? 'N/A'})</span>
                 </>
               )}
             </DialogTitle>
           </DialogHeader>
 
-          {/* Use theme colors for scrollbar if possible (might need specific tailwind plugin or CSS) */}
-          <div className="py-4 flex-1 overflow-y-auto pr-2"> {/* Removed scrollbar classes for now */}
+          <div className="py-4 flex-1 overflow-y-auto pr-2">
             {ruleLoadingState === 'error' && ruleError && (
-              // Use theme colors for error box
               <div className="p-4 bg-destructive/10 border border-destructive rounded-lg text-center">
                 <AlertTriangle className="mx-auto mb-2 text-destructive" size={24} />
                 <p className="text-destructive font-medium mb-1">Error Loading Rules</p>
@@ -276,7 +261,7 @@ function App() {
               <>
                 {ruleLoadingState === 'loadingContent' && (
                   <div className="flex items-center justify-center h-40">
-                    <Loader2 className="h-8 w-8 animate-spin text-primary" /> {/* Theme primary color */}
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
                   </div>
                 )}
                 {ruleLoadingState !== 'loadingContent' && selectedRuleContent && (
@@ -284,15 +269,14 @@ function App() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="absolute top-2 right-2 h-7 w-7 text-muted-foreground hover:text-foreground opacity-50 group-hover:opacity-100 transition-opacity" // Theme colors
+                      className="absolute top-2 right-2 h-7 w-7 text-muted-foreground hover:text-foreground opacity-50 group-hover:opacity-100 transition-opacity"
                       onClick={() => selectedRuleContent && copyToClipboard(selectedRuleContent)}
                       aria-label="Copy rule content"
                       disabled={!selectedRuleContent}
                     >
                       <Copy size={16} />
                     </Button>
-                    {/* Use theme colors for code block - Changed background to solid slate-800, text to slate-100 */}
-                    <pre className="bg-slate-800 p-4 rounded-md text-sm text-slate-100 whitespace-pre-wrap break-words font-mono max-h-[65vh] overflow-auto"> {/* Changed text-foreground to text-slate-100 */}
+                    <pre className="bg-slate-800 p-4 rounded-md text-sm text-slate-100 whitespace-pre-wrap break-words font-mono max-h-[65vh] overflow-auto">
                       {selectedRuleContent}
                     </pre>
                   </div>
@@ -307,33 +291,28 @@ function App() {
               <>
                 {ruleLoadingState === 'loadingList' && (
                   <div className="flex items-center justify-center h-40">
-                    <Loader2 className="h-8 w-8 animate-spin text-primary" /> {/* Theme primary color */}
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
                   </div>
                 )}
                 {ruleLoadingState !== 'loadingList' && rulesForSelectedTechnique && rulesForSelectedTechnique.length > 0 && (
-                  // Add background, padding, rounding, and border to the rule list container - Changed text to slate-100
-                  <div className="space-y-2 bg-slate-800 text-slate-100 p-4 rounded-md border border-border"> {/* Changed text-foreground to text-slate-100 */}
+                  <div className="space-y-2 bg-slate-800 text-slate-100 p-4 rounded-md border border-border">
                     {rulesForSelectedTechnique?.map((rule) => (
-                      // Use theme colors for rule button
                       <button
                         key={rule.id}
                         onClick={() => handleRuleClick(rule)}
                         className="w-full text-left p-3 rounded-md bg-background hover:bg-muted transition-colors border border-border focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 focus:ring-offset-background"
                       >
-                        {/* Format: title - description - id - Explicitly set rule title color */}
-                        <p className="font-medium text-slate-100 truncate"> {/* Changed text-foreground to text-slate-100 */}
+                        <p className="font-medium text-slate-100 truncate">
                           {rule.title ?? rule.id}
                         </p>
-                        <p className="text-xs text-muted-foreground mt-1 truncate"> {/* Keep description muted */}
+                        <p className="text-xs text-muted-foreground mt-1 truncate">
                           {`${rule.description ?? 'No description available.'} - ${rule.id}`}
                         </p>
-                        {/* Removed the separate ID line */}
                       </button>
                     ))}
                   </div>
                 )}
                 {ruleLoadingState !== 'loadingList' && rulesForSelectedTechnique?.length === 0 && (
-                  // Use theme colors for empty state
                   <div className="flex flex-col items-center justify-center h-40 text-center text-muted-foreground">
                     <List size={32} className="mb-2" />
                     <p>No rules found for this technique.</p>
@@ -343,20 +322,17 @@ function App() {
             )}
           </div>
 
-          {/* Use standard DialogFooter styling */}
           <DialogFooter className="pt-3 mt-auto">
             {(!selectedRule || rulesForSelectedTechnique?.length === 0) && (
               <DialogClose asChild>
-                {/* Use standard Button styling - Added text-slate-100 */}
                 <Button variant="outline" className="text-slate-100">Close</Button>
               </DialogClose>
             )}
             {selectedRule && (
-              // Use standard Button styling
               <Button
                 variant="outline"
                 onClick={handleBackToList}
-                className="text-slate-100" // Added text-slate-100
+                className="text-slate-100"
               >
                 <ArrowLeft size={16} className="mr-2" /> Back to List
               </Button>
