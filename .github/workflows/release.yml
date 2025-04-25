@@ -27,7 +27,7 @@ jobs:
         id: build
         run: |
           bun run build
-          echo "build_dir=$(pwd)" >> $GITHUB_OUTPUT # Use pwd directly as working-directory is already set
+          echo "build_dir=$(pwd)" >> $GITHUB_OUTPUT
         working-directory: ./mitre-board-app
 
       - name: Upload build artifacts
@@ -95,7 +95,7 @@ jobs:
       - name: Upload Release Asset (${{ matrix.target }})
         uses: actions/upload-artifact@v4
         with:
-          name: release-asset-${{ matrix.target }} # Unique artifact name per target
+          name: release-asset-${{ matrix.target }}
           path: ${{ matrix.archive_name }}
           retention-days: 1
 
@@ -110,8 +110,8 @@ jobs:
       - name: Download all release assets
         uses: actions/download-artifact@v4
         with:
-          pattern: release-asset-* # Download all artifacts matching the pattern
-          path: release-assets # Download into a single directory
+          pattern: release-asset-*
+          path: release-assets
 
       - name: Create Release and Upload Assets
         uses: softprops/action-gh-release@v2
