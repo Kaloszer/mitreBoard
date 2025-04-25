@@ -1,0 +1,118 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build:
+    name: Build Application
+    runs-on: ubuntu-latest
+    outputs:
+      build_dir: ${{ steps.build.outputs.build_dir }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        working-directory: ./mitre-board-app
+
+      - name: Build application (frontend and server)
+        id: build
+        run: |
+          bun run build
+          echo "build_dir=$(pwd)/mitre-board-app" >> $GITHUB_OUTPUT
+        working-directory: ./mitre-board-app
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: |
+            ${{ steps.build.outputs.build_dir }}/mitre-board-*
+            ${{ steps.build.outputs.build_dir }}/dist/
+            ${{ steps.build.outputs.build_dir }}/public/
+          retention-days: 1
+
+  package-release:
+    name: Package and Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        include:
+          - target: linux-arm64
+            binary_suffix: linux-arm64
+            output_name: mitre-board
+            archive_cmd: tar -czvf mitre-board-linux-arm64.tar.gz -C release-linux-arm64 .
+            archive_name: mitre-board-linux-arm64.tar.gz
+          - target: linux-x64-modern
+            binary_suffix: linux-x64-modern
+            output_name: mitre-board
+            archive_cmd: tar -czvf mitre-board-linux-x64-modern.tar.gz -C release-linux-x64 .
+            archive_name: mitre-board-linux-x64-modern.tar.gz
+          - target: windows-x64-modern
+            binary_suffix: windows-x64-modern.exe
+            output_name: mitre-board.exe
+            archive_cmd: zip -r mitre-board-windows-x64-modern.zip release-windows-x64
+            archive_name: mitre-board-windows-x64-modern.zip
+          - target: mac-x64
+            binary_suffix: mac-x64
+            output_name: mitre-board
+            archive_cmd: tar -czvf mitre-board-mac-x64.tar.gz -C release-mac-x64 .
+            archive_name: mitre-board-mac-x64.tar.gz
+          - target: mac-arm64
+            binary_suffix: mac-arm64
+            output_name: mitre-board
+            archive_cmd: tar -czvf mitre-board-mac-arm64.tar.gz -C release-mac-arm64 .
+            archive_name: mitre-board-mac-arm64.tar.gz
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+          path: build-output
+
+      - name: Prepare artifact archive (${{ matrix.target }})
+        run: |
+          RELEASE_DIR="release-${{ matrix.target }}"
+          mkdir $RELEASE_DIR
+          cp build-output/mitre-board-${{ matrix.binary_suffix }} $RELEASE_DIR/${{ matrix.output_name }}
+          cp build-output/public/index.html $RELEASE_DIR/
+          cp -r build-output/dist $RELEASE_DIR/
+          ${{ matrix.archive_cmd }}
+
+      - name: Upload Release Asset (${{ matrix.target }})
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: ${{ matrix.archive_name }}
+          retention-days: 1
+
+  release:
+    name: Create GitHub Release
+    needs: package-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all release assets
+        uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: release-assets
+
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*

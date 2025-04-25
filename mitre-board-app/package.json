@@ -6,7 +6,7 @@
     "dev": "bun run src/server/index.ts --directory ./",
     "build:css": "bunx @tailwindcss/cli -i ./src/globals.css -o ./dist/output.css",
     "build:frontend": "bun build ./src/index.tsx --outdir ./dist --target browser --minify --tsconfig ./tsconfig.json",
-    "build:server": "bun build ./src/server/index.ts --compile --outfile mitre-board --target bun",
+    "build:server": "bun build ./src/server/index.ts --compile --outfile mitre-board-linux-arm64 --target bun-linux-arm64 && bun build ./src/server/index.ts --compile --outfile mitre-board-linux-x64-modern --target bun-linux-x64-modern && bun build ./src/server/index.ts --compile --outfile mitre-board-windows-x64-modern.exe --target bun-windows-x64-modern && bun build ./src/server/index.ts --compile --outfile mitre-board-mac-x64 --target bun-darwin-x64 && bun build ./src/server/index.ts --compile --outfile mitre-board-mac-arm64 --target bun-darwin-arm64",
     "build": "rm -rf dist && mkdir dist && bun run build:css && bun run build:frontend && bun run build:server"
   },
   "devDependencies": {
