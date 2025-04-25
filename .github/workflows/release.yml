@@ -148,7 +148,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: release-assets
-          # merge-multiple: true # Keep this, might still be useful depending on download structure
+          merge-multiple: true
 
       - name: List downloaded assets
         run: ls -R release-assets
