@@ -27,7 +27,7 @@ jobs:
         id: build
         run: |
           bun run build
-          echo "build_dir=$(pwd)/mitre-board-app" >> $GITHUB_OUTPUT
+          echo "build_dir=$(pwd)" >> $GITHUB_OUTPUT # Use pwd directly as working-directory is already set
         working-directory: ./mitre-board-app
 
       - name: Upload build artifacts
