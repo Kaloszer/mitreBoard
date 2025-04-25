@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Code, List, ArrowLeft, Loader2, AlertTriangle, Copy } from 'lucide-react';
 import { MitreBoardHeader } from './components/MitreBoardHeader';
+import { MitreBoardControls } from './components/MitreBoardControls'; // Added import
 import { TacticCard } from './components/TacticCard';
 
 // Type definitions
@@ -47,6 +48,7 @@ function App() {
   const [selectedRuleContent, setSelectedRuleContent] = useState<string | null>(null);
   const [ruleLoadingState, setRuleLoadingState] = useState<'idle' | 'loadingList' | 'loadingContent' | 'error'>('idle');
   const [ruleError, setRuleError] = useState<string | null>(null);
+  const [showOnlyMissingTechniques, setShowOnlyMissingTechniques] = useState<boolean>(false); // Added state
 
   useEffect(() => {
     async function fetchData() {
@@ -173,14 +175,82 @@ function App() {
       console.log("Copied to clipboard!");
     }).catch(err => {
       console.error("Failed to copy text: ", err);
-    });
-  };
-
-  // JSX
-  return (
-    <div className="min-h-screen bg-slate-950 text-foreground p-4 md:p-6 lg:p-8">
+     });
+   };
+ 
+   // Function to handle exporting missing techniques
+   const handleExportMissingTechniques = () => {
+     if (!mitreData) return;
+ 
+     const missingTechniques: Array<{
+       TacticName: string;
+       TacticNumber: string;
+       TechniqueNumber: string;
+       TechniqueTitle: string;
+     }> = [];
+ 
+     mitreData.tactics.forEach(tactic => {
+       const tacticId = getExternalId(tactic);
+       tactic.techniques.forEach(technique => {
+         // Only include base techniques (not sub-techniques) for export
+         if (!technique.id.includes('.')) {
+            const techId = getExternalId(technique);
+            if ((ruleCounts[techId] ?? 0) === 0) {
+              missingTechniques.push({
+                TacticName: tactic.name,
+                TacticNumber: tacticId,
+                TechniqueNumber: techId,
+                TechniqueTitle: technique.name,
+              });
+            }
+         }
+       });
+     });
+ 
+     if (missingTechniques.length === 0) {
+       alert("No missing techniques (with 0 rules) found to export.");
+       return;
+     }
+ 
+     // Create CSV content
+     const header = "TacticName,TacticNumber,TechniqueNumber,TechniqueTitle";
+     const rows = missingTechniques.map(t =>
+       // Ensure proper CSV quoting
+       `"${t.TacticName.replace(/"/g, '""')}","${t.TacticNumber.replace(/"/g, '""')}","${t.TechniqueNumber.replace(/"/g, '""')}","${t.TechniqueTitle.replace(/"/g, '""')}"`
+     );
+     const csvContent = [header, ...rows].join("\n");
+ 
+     // Create and trigger download
+     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+     const link = document.createElement("a");
+     if (link.download !== undefined) { // Feature detection
+       const url = URL.createObjectURL(blob);
+       link.setAttribute("href", url);
+       link.setAttribute("download", "missing_mitre_techniques.csv");
+       link.style.visibility = 'hidden';
+       document.body.appendChild(link);
+       link.click();
+       document.body.removeChild(link);
+       URL.revokeObjectURL(url);
+     } else {
+       alert("CSV export is not supported in this browser.");
+     }
+   };
+ 
+   // JSX
+   return (
+     <div className="min-h-screen bg-slate-950 text-foreground p-4 md:p-6 lg:p-8">
       <div className="max-w-[1400px] mx-auto">
         <MitreBoardHeader />
+
+        {/* Add Controls Section */}
+        {!isLoading && !error && mitreData && (
+            <MitreBoardControls
+              showOnlyMissing={showOnlyMissingTechniques}
+              onShowOnlyMissingChange={setShowOnlyMissingTechniques}
+              onExportClick={handleExportMissingTechniques} // Connect export function
+            />
+         )}
 
         {isLoading && (
           <div className="flex items-center justify-center h-80">
@@ -205,10 +275,23 @@ function App() {
         )}
 
         {!isLoading && !error && mitreData && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {mitreData.tactics.map((tactic) => (
-              <TacticCard
-                key={getExternalId(tactic)}
+           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+             {/* Apply filtering based on showOnlyMissingTechniques state */}
+             {(showOnlyMissingTechniques
+               ? mitreData.tactics
+                   .map(tactic => ({
+                     ...tactic,
+                     // Filter techniques: only base techniques with 0 rules
+                     techniques: tactic.techniques.filter(technique =>
+                       !technique.id.includes('.') && (ruleCounts[getExternalId(technique)] ?? 0) === 0
+                     ),
+                   }))
+                   // Filter tactics: only those with remaining techniques
+                   .filter(tactic => tactic.techniques.length > 0)
+               : mitreData.tactics // If not filtering, use original data
+             ).map((tactic) => (
+               <TacticCard
+                 key={getExternalId(tactic)}
                 tactic={tactic}
                 ruleCounts={ruleCounts}
                 getExternalId={getExternalId}

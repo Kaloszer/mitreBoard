@@ -26,19 +26,19 @@ export function MitreBoardHeader() {
           <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800/80" />
           <div className="relative flex flex-wrap gap-3">
             <div className="flex items-center">
-              <span className={cn("inline-block w-4 h-4 rounded-sm mr-1.5 border border-border/50 shadow-sm", legendColors.level5)}></span>
+              <span className={cn("inline-block w-4 h-4 rounded-sm mr-1.5 border border-border/50", legendColors.level5)}></span>
               <span className="text-gray-200">≥5 rules</span>
             </div>
             <div className="flex items-center">
-              <span className={cn("inline-block w-4 h-4 rounded-sm mr-1.5 border border-border/50 shadow-sm", legendColors.level34)}></span>
+              <span className={cn("inline-block w-4 h-4 rounded-sm mr-1.5 border border-border/50", legendColors.level34)}></span>
               <span className="text-gray-200">3-4 rules</span>
             </div>
             <div className="flex items-center">
-              <span className={cn("inline-block w-4 h-4 rounded-sm mr-1.5 border border-border/50 shadow-sm", legendColors.level12)}></span>
+              <span className={cn("inline-block w-4 h-4 rounded-sm mr-1.5 border border-border/50", legendColors.level12)}></span>
               <span className="text-gray-200">1-2 rules</span>
             </div>
             <div className="flex items-center">
-              <span className={cn("inline-block w-4 h-4 rounded-sm mr-1.5 border border-border/50 shadow-sm", legendColors.level0)}></span>
+              <span className={cn("inline-block w-4 h-4 rounded-sm mr-1.5 border border-border/50", legendColors.level0)}></span>
               <span className="text-gray-200">0 rules</span>
             </div>
           </div>
