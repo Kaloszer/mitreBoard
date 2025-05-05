@@ -247,7 +247,6 @@ function App() {
          <MitreBoardHeader
            currentView={currentView}
            onToggleView={() => {
-             console.log('Toggling view...'); // Add console log
              setCurrentView(prev => prev === 'board' ? 'inactiveExplorer' : 'board');
            }}
          />
