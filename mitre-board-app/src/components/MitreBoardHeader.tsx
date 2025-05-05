@@ -70,8 +70,8 @@ export function MitreBoardHeader({ currentView, onToggleView }: Readonly<MitreBo
               </>
             )}
           </Button>
-      </div> {/* Closes main flex row */}
-    </div> {/* Closes relative container */}
-  </div> {/* Closes outer div */}
+      </div>
+    </div>
+  </div>
   );
 }
