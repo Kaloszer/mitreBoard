@@ -1,8 +1,15 @@
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button"; // Import Button
+import { Eye, EyeOff } from 'lucide-react'; // Import icons
 
-export function MitreBoardHeader() {
+interface MitreBoardHeaderProps {
+  currentView: 'board' | 'inactiveExplorer';
+  onToggleView: () => void;
+}
+
+export function MitreBoardHeader({ currentView, onToggleView }: MitreBoardHeaderProps) {
   const legendColors = {
-    level5: "bg-blue-950", 
+    level5: "bg-blue-950",
     level34: "bg-sky-950",
     level12: "bg-amber-950",
     level0: "bg-gray-800",
@@ -42,6 +49,25 @@ export function MitreBoardHeader() {
               <span className="text-gray-200">0 rules</span>
             </div>
           </div>
+          {/* Add Toggle Button */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onToggleView}
+            className="ml-auto text-slate-200 border-slate-600 hover:bg-slate-700 hover:text-white"
+          >
+            {currentView === 'board' ? (
+              <>
+                <EyeOff className="mr-2 h-4 w-4" />
+                View Inactive Rules
+              </>
+            ) : (
+              <>
+                <Eye className="mr-2 h-4 w-4" />
+                View MITRE Board
+              </>
+            )}
+          </Button>
         </div>
       </div>
       </div>
