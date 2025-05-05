@@ -36,33 +36,59 @@ const MITRE_ENTERPRISE_ATTACK_URL = "https://raw.githubusercontent.com/mitre/cti
 
 // --- Data Store ---
 let mitreDataStore: MitreData | null = null;
-let ruleCounts: Record<string, number> = {};
-// Store detailed rule info for API endpoints
+
+// Active rules data
+let activeRuleCounts: Record<string, number> = {};
 interface SimpleRuleInfo {
   id: string;
   title: string;
   description: string;
 }
-let rulesByTechniqueId: Record<string, SimpleRuleInfo[]> = {};
-let ruleContentPathById: Record<string, string> = {};
+let activeRulesByTechniqueId: Record<string, SimpleRuleInfo[]> = {};
+let activeRuleContentPathById: Record<string, string> = {};
+
+// Inactive rules data
+interface InactiveRuleDetails extends SimpleRuleInfo {
+    tactics: string[];
+    techniques: string[]; // Includes sub-techniques like Txxxx.xxx
+    satisfies: {
+        tactics: number;
+        techniques: number; // Base techniques only (Txxxx)
+        subTechniques: number; // Sub-techniques only (Txxxx.xxx)
+    };
+}
+let inactiveRulesData: InactiveRuleDetails[] = [];
+let inactiveRuleContentPathById: Record<string, string> = {};
 
 // --- Command Line Argument Parsing ---
 program
   .version('0.0.1')
   .description('MITRE ATT&CK Board Server')
-  .requiredOption('-d, --directory <path>', 'Path to the directory containing YAML analytic rules')
+  .requiredOption('-d, --directory <path>', 'Path to the directory containing ACTIVE YAML analytic rules')
+  .option('-n, --directory-not-implemented <path>', 'Path to the directory containing NOT IMPLEMENTED YAML analytic rules') // Changed -dn to -n
   .parse(process.argv);
 
 const options = program.opts();
-const rulesDirectoryPath = path.resolve(options.directory); // Resolve to absolute path
+const activeRulesDirectoryPath = path.resolve(options.directory); // Resolve to absolute path
+const inactiveRulesDirectoryPath = options.directoryNotImplemented ? path.resolve(options.directoryNotImplemented) : null; // Resolve if provided
 
-// Validate if the directory exists
-if (!fs.existsSync(rulesDirectoryPath) || !fs.lstatSync(rulesDirectoryPath).isDirectory()) {
-  console.error(`Error: Directory not found or is not a directory: ${rulesDirectoryPath}`);
+// Validate active rules directory
+if (!fs.existsSync(activeRulesDirectoryPath) || !fs.lstatSync(activeRulesDirectoryPath).isDirectory()) {
+  console.error(`Error: Active rules directory not found or is not a directory: ${activeRulesDirectoryPath}`);
   process.exit(1);
 }
+console.log(`Using active rules directory: ${activeRulesDirectoryPath}`);
 
-console.log(`Using rules directory: ${rulesDirectoryPath}`);
+// Validate inactive rules directory if provided
+if (inactiveRulesDirectoryPath) {
+  if (!fs.existsSync(inactiveRulesDirectoryPath) || !fs.lstatSync(inactiveRulesDirectoryPath).isDirectory()) {
+    console.error(`Error: Inactive rules directory not found or is not a directory: ${inactiveRulesDirectoryPath}`);
+    process.exit(1);
+  }
+  console.log(`Using inactive rules directory: ${inactiveRulesDirectoryPath}`);
+} else {
+  console.log('No inactive rules directory provided.');
+}
 
 // --- Server Setup ---
 const port = process.env.PORT ?? 3000; // Default to port 3000
@@ -190,64 +216,63 @@ function getAllFiles(dirPath: string, arrayOfFiles: string[] = []): string[] {
   return arrayOfFiles;
 }
 
+// Updated return type to include raw rule data for further processing
 function parseRuleFiles(directoryPath: string): {
-    counts: Record<string, number>;
-    rulesByTechnique: Record<string, SimpleRuleInfo[]>;
+    rawRules: RuleYaml[];
     contentPaths: Record<string, string>;
 } {
     console.log(`Parsing YAML rules from ${directoryPath}...`);
-    const counts: Record<string, number> = {};
-    const rulesByTechnique: Record<string, SimpleRuleInfo[]> = {};
+    const rawRules: RuleYaml[] = [];
     const contentPaths: Record<string, string> = {};
-    const yamlFiles = getAllFiles(directoryPath).filter(file => file.endsWith('.yaml') || file.endsWith('.yml'));
+    // Keep track of seen IDs and their file paths during parsing
+    const seenIdsMap = new Map<string, string>();
+    const duplicateInfo: { id: string, files: string[] }[] = [];
 
+    const yamlFiles = getAllFiles(directoryPath).filter(file => file.endsWith('.yaml') || file.endsWith('.yml'));
     console.log(`Found ${yamlFiles.length} YAML files.`);
 
     for (const filePath of yamlFiles) {
         try {
             const fileContent = fs.readFileSync(filePath, 'utf8');
-            const doc = YAML.parse(fileContent) as RuleYaml | null; // Parse YAML
+            const doc = YAML.parse(fileContent) as RuleYaml | null;
 
-            if (doc && doc.id) { // Ensure rule has an ID
+            if (doc && doc.id) {
                 const ruleId = doc.id.trim();
-                const ruleInfo: SimpleRuleInfo = {
+                const normalizedRule = { // Normalize here
+                    ...doc,
                     id: ruleId,
-                    // Prefer title, fallback to name, then to ID if neither exists
                     title: (doc.title ?? doc.name ?? ruleId).trim(),
                     description: (doc.description ?? 'No description available.').trim(),
+                    tactics: (doc.tactics ?? []).map(t => typeof t === 'string' ? t.trim() : '').filter(Boolean),
+                    relevantTechniques: (doc.relevantTechniques ?? []).map(t => typeof t === 'string' ? t.trim() : '').filter(Boolean),
                 };
 
-                // Store content path
+                // Check for duplicates
+                if (seenIdsMap.has(ruleId)) {
+                    const existingPath = seenIdsMap.get(ruleId)!;
+                    console.warn(`Duplicate rule ID '${ruleId}' found!`);
+                    console.warn(`  - Existing: ${existingPath}`);
+                    console.warn(`  - Current:  ${filePath}`);
+                    // Store duplicate info for reporting later
+                    let entry = duplicateInfo.find(d => d.id === ruleId);
+                    if (!entry) {
+                        entry = { id: ruleId, files: [existingPath] };
+                        duplicateInfo.push(entry);
+                    }
+                    if (!entry.files.includes(filePath)) {
+                         entry.files.push(filePath);
+                    }
+                    // *** Decision: Skip subsequent duplicates to prevent React errors ***
+                    // You could alternatively throw an error here to force fixing the source files.
+                    console.warn(`  - Skipping rule from: ${filePath}`);
+                    continue; // Skip adding this duplicate rule to rawRules
+                }
+
+                // If not a duplicate, add it
+                seenIdsMap.set(ruleId, filePath);
+                rawRules.push(normalizedRule);
                 contentPaths[ruleId] = filePath;
 
-                // Process tactics for counts
-                if (Array.isArray(doc.tactics)) {
-                    doc.tactics.forEach(tacticId => {
-                        if (typeof tacticId === 'string' && tacticId.trim()) {
-                            const key = tacticId.trim();
-                            counts[key] = (counts[key] ?? 0) + 1;
-                        }
-                    });
-                }
-
-                // Process techniques for counts and details
-                if (Array.isArray(doc.relevantTechniques)) {
-                    doc.relevantTechniques.forEach(techniqueId => {
-                         if (typeof techniqueId === 'string' && techniqueId.trim()) {
-                            const key = techniqueId.trim();
-                            counts[key] = (counts[key] ?? 0) + 1;
-
-                            // Add rule info to the technique's list
-                            if (!rulesByTechnique[key]) {
-                                rulesByTechnique[key] = [];
-                            }
-                            // Avoid adding duplicate rule IDs for the same technique
-                            if (!rulesByTechnique[key].some(r => r.id === ruleId)) {
-                                rulesByTechnique[key].push(ruleInfo);
-                            }
-                         }
-                    });
-                }
             } else if (doc) {
                 console.warn(`Skipping rule file ${filePath}: Missing 'id' field.`);
             }
@@ -256,20 +281,109 @@ function parseRuleFiles(directoryPath: string): {
         }
     }
 
-    console.log(`Finished parsing rules. Found counts for ${Object.keys(counts).length} unique IDs.`);
-    console.log(`Stored details for ${Object.keys(contentPaths).length} rules.`);
-    return { counts, rulesByTechnique, contentPaths };
+    // Report all duplicates at the end
+    if (duplicateInfo.length > 0) {
+         console.error(`--------------------------------------------------`);
+         console.error(`ERROR: Found ${duplicateInfo.length} rule IDs with duplicate definitions in ${directoryPath}:`);
+         duplicateInfo.forEach(dup => {
+             console.error(`  - ID: '${dup.id}' found in files:`);
+             dup.files.forEach(f => console.error(`    * ${f}`));
+         });
+         console.error(`--------------------------------------------------`);
+         // Optionally: process.exit(1) or throw new Error("Duplicate rule IDs found");
+     }
+
+
+    console.log(`Finished parsing ${directoryPath}. Found ${rawRules.length + duplicateInfo.reduce((sum, d) => sum + d.files.length - 1, 0)} rules initially, kept ${rawRules.length} unique rules.`);
+    console.log(`Stored content paths for ${Object.keys(contentPaths).length} rules.`);
+    return { rawRules, contentPaths }; // rawRules now only contains unique IDs
+}
+
+// Function to process parsed rules into the required data structures
+function processActiveRules(parsedData: { rawRules: RuleYaml[], contentPaths: Record<string, string> }) {
+    const counts: Record<string, number> = {};
+    const rulesByTechnique: Record<string, SimpleRuleInfo[]> = {};
+
+    for (const rule of parsedData.rawRules) {
+        const ruleInfo: SimpleRuleInfo = {
+            id: rule.id,
+            title: rule.title ?? rule.id,
+            description: rule.description ?? '',
+        };
+
+        // Process tactics for counts
+        rule.tactics?.forEach(tacticId => {
+            counts[tacticId] = (counts[tacticId] ?? 0) + 1;
+        });
+
+        // Process techniques for counts and details
+        rule.relevantTechniques?.forEach(techniqueId => {
+            counts[techniqueId] = (counts[techniqueId] ?? 0) + 1;
+
+            // Add rule info to the technique's list
+            if (!rulesByTechnique[techniqueId]) {
+                rulesByTechnique[techniqueId] = [];
+            }
+            if (!rulesByTechnique[techniqueId].some(r => r.id === rule.id)) {
+                rulesByTechnique[techniqueId].push(ruleInfo);
+            }
+        });
+    }
+    activeRuleCounts = counts;
+    activeRulesByTechniqueId = rulesByTechnique;
+    activeRuleContentPathById = parsedData.contentPaths;
+    console.log(`Processed active rules: Counts for ${Object.keys(activeRuleCounts).length} IDs, details for ${Object.keys(activeRulesByTechniqueId).length} techniques.`);
+}
+
+// Function to process inactive rules and calculate satisfaction counts
+function processInactiveRules(parsedData: { rawRules: RuleYaml[], contentPaths: Record<string, string> }) {
+    const processedRules: InactiveRuleDetails[] = [];
+
+    for (const rule of parsedData.rawRules) {
+        const techniques = rule.relevantTechniques ?? [];
+        let techniqueCount = 0;
+        let subTechniqueCount = 0;
+
+        techniques.forEach(techId => {
+            if (techId.includes('.')) {
+                subTechniqueCount++;
+            } else {
+                techniqueCount++;
+            }
+        });
+
+        processedRules.push({
+            id: rule.id,
+            title: rule.title ?? rule.id,
+            description: rule.description ?? '',
+            tactics: rule.tactics ?? [],
+            techniques: techniques,
+            satisfies: {
+                tactics: (rule.tactics ?? []).length,
+                techniques: techniqueCount,
+                subTechniques: subTechniqueCount,
+            }
+        });
+    }
+    inactiveRulesData = processedRules;
+    inactiveRuleContentPathById = parsedData.contentPaths;
+    console.log(`Processed ${inactiveRulesData.length} inactive rules.`);
 }
 
 // --- Server Startup Logic ---
 async function startServer() {
     try {
         mitreDataStore = await loadMitreData();
-        // Parse rules and store all necessary data structures
-        const parsedRules = parseRuleFiles(rulesDirectoryPath);
-        ruleCounts = parsedRules.counts;
-        rulesByTechniqueId = parsedRules.rulesByTechnique;
-        ruleContentPathById = parsedRules.contentPaths;
+
+        // Parse and process ACTIVE rules
+        const parsedActiveRules = parseRuleFiles(activeRulesDirectoryPath);
+        processActiveRules(parsedActiveRules);
+
+        // Parse and process INACTIVE rules (if directory provided)
+        if (inactiveRulesDirectoryPath) {
+            const parsedInactiveRules = parseRuleFiles(inactiveRulesDirectoryPath);
+            processInactiveRules(parsedInactiveRules);
+        }
 
         const server = Bun.serve({
           port: port,
@@ -288,29 +402,40 @@ async function startServer() {
               }
             }
 
+            // Returns counts for ACTIVE rules only (for the main board)
             if (url.pathname === '/api/rule-counts') {
-               return new Response(JSON.stringify(ruleCounts), {
+               return new Response(JSON.stringify(activeRuleCounts), {
                   headers: { 'Content-Type': 'application/json' },
                 });
             }
 
+            // Returns details for ACTIVE rules associated with a technique
             if (url.pathname === '/api/rules') {
                 const techniqueId = url.searchParams.get('techniqueId');
                 if (!techniqueId) {
                     return new Response("Missing 'techniqueId' query parameter", { status: 400 });
                 }
-                const rules = rulesByTechniqueId[techniqueId] ?? []; // Default to empty array
+                const rules = activeRulesByTechniqueId[techniqueId] ?? []; // Default to empty array
                 return new Response(JSON.stringify(rules), {
                     headers: { 'Content-Type': 'application/json' },
                 });
             }
 
+            // Returns the processed data for INACTIVE rules
+            if (url.pathname === '/api/inactive-rules') {
+                return new Response(JSON.stringify(inactiveRulesData), {
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            }
+
+            // Returns content for ANY rule (active or inactive) by ID
             if (url.pathname === '/api/rule-content') {
                 const ruleId = url.searchParams.get('ruleId');
                 if (!ruleId) {
                     return new Response("Missing 'ruleId' query parameter", { status: 400 });
                 }
-                const filePath = ruleContentPathById[ruleId];
+                // Check both active and inactive paths
+                const filePath = activeRuleContentPathById[ruleId] ?? inactiveRuleContentPathById[ruleId];
                 if (!filePath) {
                     return new Response(`Rule content not found for ID: ${ruleId}`, { status: 404 });
                 }

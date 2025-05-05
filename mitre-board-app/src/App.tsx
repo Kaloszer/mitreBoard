@@ -10,8 +10,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Code, List, ArrowLeft, Loader2, AlertTriangle, Copy } from 'lucide-react';
 import { MitreBoardHeader } from './components/MitreBoardHeader';
-import { MitreBoardControls } from './components/MitreBoardControls'; // Added import
+import { MitreBoardControls } from './components/MitreBoardControls';
 import { TacticCard } from './components/TacticCard';
+import { InactiveRulesExplorer } from './components/InactiveRulesExplorer';
 
 // Type definitions
 interface Technique {
@@ -48,7 +49,8 @@ function App() {
   const [selectedRuleContent, setSelectedRuleContent] = useState<string | null>(null);
   const [ruleLoadingState, setRuleLoadingState] = useState<'idle' | 'loadingList' | 'loadingContent' | 'error'>('idle');
   const [ruleError, setRuleError] = useState<string | null>(null);
-  const [showOnlyMissingTechniques, setShowOnlyMissingTechniques] = useState<boolean>(false); // Added state
+  const [showOnlyMissingTechniques, setShowOnlyMissingTechniques] = useState<boolean>(false);
+  const [currentView, setCurrentView] = useState<'board' | 'inactiveExplorer'>('board'); // State for view switching
 
   useEffect(() => {
     async function fetchData() {
@@ -241,10 +243,19 @@ function App() {
    return (
      <div className="min-h-screen bg-slate-950 text-foreground p-4 md:p-6 lg:p-8">
       <div className="max-w-[1400px] mx-auto">
-        <MitreBoardHeader />
+         {/* Pass view state and toggle function to header */}
+         <MitreBoardHeader
+           currentView={currentView}
+           onToggleView={() => {
+             setCurrentView(prev => prev === 'board' ? 'inactiveExplorer' : 'board');
+           }}
+         />
 
-        {/* Add Controls Section */}
-        {!isLoading && !error && mitreData && (
+         {/* Conditional Rendering based on currentView */}
+        {currentView === 'board' && (
+          <>
+            {/* Add Controls Section */}
+            {!isLoading && !error && mitreData && (
             <MitreBoardControls
               showOnlyMissing={showOnlyMissingTechniques}
               onShowOnlyMissingChange={setShowOnlyMissingTechniques}
@@ -301,8 +312,16 @@ function App() {
             ))}
           </div>
         )}
+          </>
+        )}
+
+        {currentView === 'inactiveExplorer' && (
+          <InactiveRulesExplorer />
+        )}
+
       </div>
 
+      {/* Keep Rule Modal outside the conditional view rendering if it needs to be shared or triggered from both views */}
       <Dialog open={isRuleModalOpen} onOpenChange={handleModalOpenChange}>
         <DialogContent className="sm:max-w-3xl md:max-w-4xl lg:max-w-5xl xl:max-w-6xl max-h-[90vh] flex flex-col bg-slate-900 border shadow-lg">
           <DialogHeader className="pr-16 relative">

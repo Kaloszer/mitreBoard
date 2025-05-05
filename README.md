@@ -15,6 +15,40 @@ Key features:
 *   Allows viewing the content of rules associated with a technique.
 *   Provides an option to filter the view to show only techniques with zero rule coverage.
 *   Exports a list of techniques with missing coverage to a CSV file.
+*   Includes an "Inactive Rule Explorer" to review rules present in the source directory but not currently active (based on a separate API endpoint), allowing you to assess their potential coverage gain.
+
+## Inactive Rule Explorer
+
+This view helps you analyze analytic rules that exist in your rule directory but are not currently considered "active" by the system (determined via the `/api/inactive-rules` endpoint). It's useful for identifying potential rules to enable.
+
+![alt text](.media/image-2.png)
+
+Key features of the explorer:
+*   Lists inactive rules with their names, descriptions, and the MITRE Tactics/Techniques/Sub-techniques they satisfy.
+*   Allows selecting rules to simulate enabling them.
+*   Calculates and displays the **Incremental Gain** (new Tactic/Technique/Sub-technique coverage) each rule would provide *if enabled*, considering both currently active rules and other selected inactive rules.
+*   Provides a filter to show only **Effective Rules** – those that offer a positive incremental gain for at least one Tactic, Technique, or Sub-technique.
+*   Allows sorting rules by name, total satisfied items, or incremental gain.
+*   Enables viewing the raw content of any inactive rule.
+*   Exports a CSV detailing the specific coverage **gain** provided by the selected inactive rules.
+
+### Inactive Rules Gain Export CSV Format
+
+The "Export Selected" feature in the Inactive Rule Explorer generates a CSV file detailing the *additional* coverage gained by enabling the selected rules, considering the baseline coverage from already active rules.
+
+```csv
+Rule Name,Rule ID,Gained Tactics,Gained Techniques,Gained SubTechniques
+"My Inactive Rule 1","rule-abc","TA0005","T1078",""
+"My Inactive Rule 2","rule-xyz","","","T1059.001, T1059.003"
+```
+
+*   **Rule Name:** The name/title of the selected inactive rule.
+*   **Rule ID:** The unique identifier of the rule.
+*   **Gained Tactics:** Comma-separated list of Tactic IDs (e.g., TA0005) for which this rule provides *new* coverage.
+*   **Gained Techniques:** Comma-separated list of Technique IDs (e.g., T1078) for which this rule provides *new* coverage.
+*   **Gained SubTechniques:** Comma-separated list of Sub-technique IDs (e.g., T1059.001) for which this rule provides *new* coverage.
+
+*(Empty fields indicate no *new* coverage was gained for that category by that specific rule, given the baseline and other selections.)*
 
 ## Getting Started
 
