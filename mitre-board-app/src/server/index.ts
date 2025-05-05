@@ -218,34 +218,61 @@ function getAllFiles(dirPath: string, arrayOfFiles: string[] = []): string[] {
 
 // Updated return type to include raw rule data for further processing
 function parseRuleFiles(directoryPath: string): {
-    rawRules: RuleYaml[]; // Return the raw parsed rules
+    rawRules: RuleYaml[];
     contentPaths: Record<string, string>;
 } {
     console.log(`Parsing YAML rules from ${directoryPath}...`);
     const rawRules: RuleYaml[] = [];
     const contentPaths: Record<string, string> = {};
-    const yamlFiles = getAllFiles(directoryPath).filter(file => file.endsWith('.yaml') || file.endsWith('.yml'));
+    // Keep track of seen IDs and their file paths during parsing
+    const seenIdsMap = new Map<string, string>();
+    const duplicateInfo: { id: string, files: string[] }[] = [];
 
+    const yamlFiles = getAllFiles(directoryPath).filter(file => file.endsWith('.yaml') || file.endsWith('.yml'));
     console.log(`Found ${yamlFiles.length} YAML files.`);
 
     for (const filePath of yamlFiles) {
         try {
             const fileContent = fs.readFileSync(filePath, 'utf8');
-            const doc = YAML.parse(fileContent) as RuleYaml | null; // Parse YAML
+            const doc = YAML.parse(fileContent) as RuleYaml | null;
 
-            if (doc && doc.id) { // Ensure rule has an ID
+            if (doc && doc.id) {
                 const ruleId = doc.id.trim();
-                // Store raw rule data
-                rawRules.push({
+                const normalizedRule = { // Normalize here
                     ...doc,
-                    id: ruleId, // Ensure ID is trimmed
-                    title: (doc.title ?? doc.name ?? ruleId).trim(), // Normalize title
-                    description: (doc.description ?? 'No description available.').trim(), // Normalize description
-                    tactics: (doc.tactics ?? []).map(t => typeof t === 'string' ? t.trim() : '').filter(Boolean), // Clean tactics
-                    relevantTechniques: (doc.relevantTechniques ?? []).map(t => typeof t === 'string' ? t.trim() : '').filter(Boolean), // Clean techniques
-                });
-                // Store content path
+                    id: ruleId,
+                    title: (doc.title ?? doc.name ?? ruleId).trim(),
+                    description: (doc.description ?? 'No description available.').trim(),
+                    tactics: (doc.tactics ?? []).map(t => typeof t === 'string' ? t.trim() : '').filter(Boolean),
+                    relevantTechniques: (doc.relevantTechniques ?? []).map(t => typeof t === 'string' ? t.trim() : '').filter(Boolean),
+                };
+
+                // Check for duplicates
+                if (seenIdsMap.has(ruleId)) {
+                    const existingPath = seenIdsMap.get(ruleId)!;
+                    console.warn(`Duplicate rule ID '${ruleId}' found!`);
+                    console.warn(`  - Existing: ${existingPath}`);
+                    console.warn(`  - Current:  ${filePath}`);
+                    // Store duplicate info for reporting later
+                    let entry = duplicateInfo.find(d => d.id === ruleId);
+                    if (!entry) {
+                        entry = { id: ruleId, files: [existingPath] };
+                        duplicateInfo.push(entry);
+                    }
+                    if (!entry.files.includes(filePath)) {
+                         entry.files.push(filePath);
+                    }
+                    // *** Decision: Skip subsequent duplicates to prevent React errors ***
+                    // You could alternatively throw an error here to force fixing the source files.
+                    console.warn(`  - Skipping rule from: ${filePath}`);
+                    continue; // Skip adding this duplicate rule to rawRules
+                }
+
+                // If not a duplicate, add it
+                seenIdsMap.set(ruleId, filePath);
+                rawRules.push(normalizedRule);
                 contentPaths[ruleId] = filePath;
+
             } else if (doc) {
                 console.warn(`Skipping rule file ${filePath}: Missing 'id' field.`);
             }
@@ -254,9 +281,22 @@ function parseRuleFiles(directoryPath: string): {
         }
     }
 
-    console.log(`Finished parsing. Found ${rawRules.length} rules with IDs.`);
+    // Report all duplicates at the end
+    if (duplicateInfo.length > 0) {
+         console.error(`--------------------------------------------------`);
+         console.error(`ERROR: Found ${duplicateInfo.length} rule IDs with duplicate definitions in ${directoryPath}:`);
+         duplicateInfo.forEach(dup => {
+             console.error(`  - ID: '${dup.id}' found in files:`);
+             dup.files.forEach(f => console.error(`    * ${f}`));
+         });
+         console.error(`--------------------------------------------------`);
+         // Optionally: process.exit(1) or throw new Error("Duplicate rule IDs found");
+     }
+
+
+    console.log(`Finished parsing ${directoryPath}. Found ${rawRules.length + duplicateInfo.reduce((sum, d) => sum + d.files.length - 1, 0)} rules initially, kept ${rawRules.length} unique rules.`);
     console.log(`Stored content paths for ${Object.keys(contentPaths).length} rules.`);
-    return { rawRules, contentPaths };
+    return { rawRules, contentPaths }; // rawRules now only contains unique IDs
 }
 
 // Function to process parsed rules into the required data structures

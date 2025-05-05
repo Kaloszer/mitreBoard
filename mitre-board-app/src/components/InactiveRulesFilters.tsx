@@ -1,67 +1,43 @@
-import React from 'react';
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-
-interface Thresholds {
-  tactics: number;
-  techniques: number;
-  subTechniques: number;
-}
+import type { Dispatch, SetStateAction } from 'react';
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Filter, FilterX } from 'lucide-react'; // Import icons for the button
 
 interface InactiveRulesFiltersProps {
-  thresholds: Thresholds;
-  onChange: (newThresholds: Thresholds) => void;
+  showOnlyEffective: boolean;
+  onShowOnlyEffectiveChange: Dispatch<SetStateAction<boolean>>;
 }
 
-export function InactiveRulesFilters({ thresholds, onChange }: InactiveRulesFiltersProps) {
+export function InactiveRulesFilters({
+  showOnlyEffective,
+  onShowOnlyEffectiveChange,
+}: Readonly<InactiveRulesFiltersProps>) {
 
-  const handleInputChange = (key: keyof Thresholds, value: string) => {
-    const numValue = parseInt(value, 10);
-    // Ensure non-negative integer, default to 0 if invalid
-    const validValue = !isNaN(numValue) && numValue >= 0 ? numValue : 0;
-    onChange({ ...thresholds, [key]: validValue });
-  };
+  const buttonText = showOnlyEffective ? "Show All Rules" : "Show Effective Only";
+  const ButtonIcon = showOnlyEffective ? FilterX : Filter;
 
   return (
-    <div className="p-4 bg-slate-800 rounded-lg border border-slate-700 mb-6 flex flex-wrap gap-4 items-end">
-      <h3 className="text-lg font-medium text-slate-200 w-full mb-2">Filter by Minimum Coverage Needed</h3>
-      <div className="flex-1 min-w-[120px]">
-        <Label htmlFor="tactic-threshold" className="text-sm text-slate-400 mb-1 block">Min Tactics</Label>
-        <Input
-          id="tactic-threshold"
-          type="number"
-          min="0"
-          placeholder="0"
-          value={thresholds.tactics}
-          onChange={(e) => handleInputChange('tactics', e.target.value)}
-          className="bg-slate-700 border-slate-600 text-slate-100"
-        />
-      </div>
-      <div className="flex-1 min-w-[120px]">
-        <Label htmlFor="technique-threshold" className="text-sm text-slate-400 mb-1 block">Min Techniques</Label>
-        <Input
-          id="technique-threshold"
-          type="number"
-          min="0"
-          placeholder="0"
-          value={thresholds.techniques}
-          onChange={(e) => handleInputChange('techniques', e.target.value)}
-          className="bg-slate-700 border-slate-600 text-slate-100"
-        />
-      </div>
-      <div className="flex-1 min-w-[120px]">
-        <Label htmlFor="subtechnique-threshold" className="text-sm text-slate-400 mb-1 block">Min Sub-Techniques</Label>
-        <Input
-          id="subtechnique-threshold"
-          type="number"
-          min="0"
-          placeholder="0"
-          value={thresholds.subTechniques}
-          onChange={(e) => handleInputChange('subTechniques', e.target.value)}
-          className="bg-slate-700 border-slate-600 text-slate-100"
-        />
-      </div>
-      {/* Filters apply live as user types */}
-    </div>
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onShowOnlyEffectiveChange(!showOnlyEffective)}
+            className="text-slate-200 border-slate-600 hover:bg-slate-700 hover:text-white"
+          >
+            <ButtonIcon className="mr-2 h-4 w-4" />
+            {buttonText}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent className="bg-slate-900 text-slate-100 border border-slate-700 max-w-xs text-xs p-2">
+          <p>
+            {showOnlyEffective
+              ? "Click to show all inactive rules, including those that don't add new coverage."
+              : "Click to show only rules that provide additional coverage (positive gain) for at least one Tactic, Technique, or Sub-technique that currently has zero coverage."}
+          </p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }

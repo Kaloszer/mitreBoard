@@ -7,7 +7,7 @@ interface MitreBoardHeaderProps {
   onToggleView: () => void;
 }
 
-export function MitreBoardHeader({ currentView, onToggleView }: MitreBoardHeaderProps) {
+export function MitreBoardHeader({ currentView, onToggleView }: Readonly<MitreBoardHeaderProps>) {
   const legendColors = {
     level5: "bg-blue-950",
     level34: "bg-sky-950",

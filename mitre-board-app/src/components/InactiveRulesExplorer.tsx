@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Loader2, AlertTriangle, Code, Copy, X } from 'lucide-react'; // Added Code, Copy, X
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Loader2, AlertTriangle, Code, Copy, X, Download } from 'lucide-react'; // Added Download icon
 import { InactiveRulesFilters } from './InactiveRulesFilters';
 import { InactiveRulesTable } from './InactiveRulesTable';
+import type { InactiveRuleDetails, SortableColumn, SortDirection } from './InactiveRulesTable';
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -10,76 +11,51 @@ import {
   DialogTitle,
   DialogFooter,
   DialogClose,
-} from "@/components/ui/dialog"; // Import Dialog components
+} from "@/components/ui/dialog";
 
-// Type matching the backend API response for /api/inactive-rules
-// Keep this consistent or move to a shared types file
-interface InactiveRuleDetails {
-  id: string;
-  title: string;
-  description: string;
-  tactics: string[];
-  techniques: string[]; // Includes sub-techniques like Txxxx.xxx
-  satisfies: {
-    tactics: number;
-    techniques: number; // Base techniques only (Txxxx)
-    subTechniques: number; // Sub-techniques only (Txxxx.xxx)
-  };
-}
 
-// TODO: Define types for MitreData and ActiveRuleCounts if not already shared
-// For now, using simple Records
 type ActiveRuleCounts = Record<string, number>;
-type MitreData = any; // Replace with actual type later if needed
+
 
 export function InactiveRulesExplorer() {
   const [inactiveRules, setInactiveRules] = useState<InactiveRuleDetails[]>([]);
   const [activeRuleCounts, setActiveRuleCounts] = useState<ActiveRuleCounts>({});
-  const [mitreData, setMitreData] = useState<MitreData | null>(null); // Needed for context? Maybe not directly here.
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedRuleIds, setSelectedRuleIds] = useState<Set<string>>(new Set()); // For checkboxes in table
+  const [selectedRuleIds, setSelectedRuleIds] = useState<Set<string>>(new Set());
 
-  // State for filters (thresholds)
-  const [filterThresholds, setFilterThresholds] = useState({
-    tactics: 0,
-    techniques: 0,
-    subTechniques: 0,
-  });
 
-  // State for Rule Content Modal
+  const [sortColumn, setSortColumn] = useState<SortableColumn | null>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+
+  const [showOnlyEffective, setShowOnlyEffective] = useState<boolean>(false);
+
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [selectedRuleForContent, setSelectedRuleForContent] = useState<InactiveRuleDetails | null>(null);
   const [ruleContent, setRuleContent] = useState<string | null>(null);
   const [contentLoadingState, setContentLoadingState] = useState<'idle' | 'loading' | 'error'>('idle');
   const [contentError, setContentError] = useState<string | null>(null);
 
-  // TODO: Add state for sorting
-
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const [inactiveRes, countsRes /*, mitreRes */] = await Promise.all([
+      const [inactiveRes, countsRes] = await Promise.all([
         fetch('/api/inactive-rules'),
         fetch('/api/rule-counts'),
-        // fetch('/api/mitre-data'), // Fetch MITRE data if needed for context/linking
       ]);
 
       if (!inactiveRes.ok) throw new Error(`Failed to fetch inactive rules: ${inactiveRes.statusText}`);
       if (!countsRes.ok) throw new Error(`Failed to fetch active rule counts: ${countsRes.statusText}`);
-      // if (!mitreRes.ok) throw new Error(`Failed to fetch MITRE data: ${mitreRes.statusText}`);
 
       const inactiveJson: InactiveRuleDetails[] = await inactiveRes.json();
       const countsJson: ActiveRuleCounts = await countsRes.json();
-      // const mitreJson: MitreData = await mitreRes.json();
 
       setInactiveRules(inactiveJson);
       setActiveRuleCounts(countsJson);
-      // setMitreData(mitreJson);
 
-      console.log("DEBUG: Fetched Inactive Rules:", inactiveJson);
-      console.log("DEBUG: Fetched Active Rule Counts:", countsJson);
+      console.log("DEBUG: Fetched Inactive Rules:", inactiveJson.length);
+      console.log("DEBUG: Fetched Active Rule Counts:", Object.keys(countsJson).length);
 
     } catch (err) {
       console.error("Inactive Explorer fetch error:", err);
@@ -103,10 +79,23 @@ export function InactiveRulesExplorer() {
       }
       return newSet;
     });
-    // Re-calculate coverage whenever selection changes
   }, []);
 
-  // --- Modal Logic ---
+  const handleSortChange = useCallback((column: SortableColumn) => {
+    setSortColumn(prevColumn => {
+      if (prevColumn === column) {
+        setSortDirection(prevDirection => prevDirection === 'asc' ? 'desc' : 'asc');
+        return prevColumn;
+      } else {
+        // Default sort direction based on column type
+        const defaultDesc = column === 'satisfies' || column === 'incrementalGain';
+        setSortDirection(defaultDesc ? 'desc' : 'asc');
+        return column;
+      }
+    });
+  }, []);
+
+  // --- Modal Logic (remains the same) ---
   const fetchRuleContent = useCallback(async (ruleId: string) => {
     setContentLoadingState('loading');
     setContentError(null);
@@ -137,7 +126,6 @@ export function InactiveRulesExplorer() {
   const handleModalOpenChange = (open: boolean) => {
     setIsModalOpen(open);
     if (!open) {
-      // Reset modal state on close
       setSelectedRuleForContent(null);
       setRuleContent(null);
       setContentLoadingState('idle');
@@ -148,62 +136,172 @@ export function InactiveRulesExplorer() {
    const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text).then(() => {
       console.log("Copied to clipboard!");
-      // TODO: Add visual feedback (e.g., toast notification)
     }).catch(err => {
       console.error("Failed to copy text: ", err);
      });
    };
   // --- End Modal Logic ---
 
+  // --- CSV Export Logic ---
+  const handleExportCsv = useCallback(() => {
+    const selectedRules = inactiveRules.filter(rule => selectedRuleIds.has(rule.id));
+    if (selectedRules.length === 0) return; // Don't export if nothing is selected
 
-  // Calculate current coverage based on active rules + selected inactive rules
+    const csvRows = [
+      ['Rule Name', 'Rule ID', 'Gained Tactics', 'Gained Techniques', 'Gained SubTechniques'] // Header row
+    ];
+
+    // Calculate coverage *without* any selected rules to determine baseline
+    const baselineCoverage = { ...activeRuleCounts };
+
+    selectedRules.forEach(rule => {
+      const gainedTactics: string[] = [];
+      const gainedTechniques: string[] = [];
+      const gainedSubTechniques: string[] = [];
+
+      // Check gain against baseline coverage
+      rule.tactics.forEach(tacticId => {
+        if ((baselineCoverage[tacticId] ?? 0) === 0) {
+          gainedTactics.push(tacticId);
+        }
+      });
+      rule.techniques.forEach(techniqueId => {
+        const isSub = techniqueId.includes('.');
+        if ((baselineCoverage[techniqueId] ?? 0) === 0) {
+          if (isSub) {
+            gainedSubTechniques.push(techniqueId);
+          } else {
+            gainedTechniques.push(techniqueId);
+          }
+        }
+      });
+
+      // Escape commas within fields and wrap in quotes if necessary
+      const escapeCsvField = (field: string): string => `"${field.replace(/"/g, '""')}"`;
+
+      csvRows.push([
+        escapeCsvField(rule.title),
+        escapeCsvField(rule.id),
+        escapeCsvField(gainedTactics.join(', ')),
+        escapeCsvField(gainedTechniques.join(', ')),
+        escapeCsvField(gainedSubTechniques.join(', '))
+      ]);
+    });
+
+    const csvContent = csvRows.map(row => row.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'selected_mitre_rules_gain.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+  }, [inactiveRules, selectedRuleIds, activeRuleCounts]); // Depends on these states
+
+
+  // Calculate coverage including selected rules (for dynamic gain display in table)
   const currentCoverage = useMemo(() => {
-    const coverage = { ...activeRuleCounts }; // Start with active counts
-    const selectedInactiveRules = inactiveRules.filter(rule => selectedRuleIds.has(rule.id));
+    const coverage = { ...activeRuleCounts }; // Start with initially active rules
+    const selectedRules = inactiveRules.filter(rule => selectedRuleIds.has(rule.id));
 
-    selectedInactiveRules.forEach(rule => {
+    selectedRules.forEach(rule => {
       rule.tactics.forEach(tacticId => {
         coverage[tacticId] = (coverage[tacticId] ?? 0) + 1;
       });
+      // Important: Count techniques AND their parent techniques if applicable
       rule.techniques.forEach(techniqueId => {
         coverage[techniqueId] = (coverage[techniqueId] ?? 0) + 1;
-        // Also increment parent technique count if it's a sub-technique
+        // Check if it's a sub-technique (Txxxx.xxx)
         if (techniqueId.includes('.')) {
           const parentId = techniqueId.split('.')[0];
-          coverage[parentId] = (coverage[parentId] ?? 0) + 1;
+          // Ensure parent exists and avoid double-counting if parent is also listed explicitly
+          if (parentId && parentId !== techniqueId) {
+             // Check if parent is already counted by this rule or another selected rule
+             // This simple increment might overcount parents if multiple subs are selected under one parent.
+             // A more robust approach might use Sets to track covered parents.
+             // For now, we'll stick to the simpler increment, assuming rule definitions are clean.
+             coverage[parentId] = (coverage[parentId] ?? 0) + 1;
+          }
         }
       });
     });
-    // console.log("DEBUG: Calculated Current Coverage:", coverage);
+    // console.log("DEBUG: Current Coverage (incl. selected):", coverage);
     return coverage;
   }, [activeRuleCounts, selectedRuleIds, inactiveRules]);
 
 
-  // Filter inactive rules based on thresholds and current coverage
-  const filteredRules = useMemo(() => {
-    // If all thresholds are 0, show all rules (no filtering needed)
-    if (filterThresholds.tactics === 0 && filterThresholds.techniques === 0 && filterThresholds.subTechniques === 0) {
-      return inactiveRules;
+ // --- Calculate incremental gain, effectiveness, and apply filters ---
+ const { finalRulesToDisplay, ruleEffectivenessMap, incrementalGainMap } = useMemo(() => {
+    const effectivenessMap: Record<string, boolean> = {};
+    const gainMap: Record<string, { tactics: number; techniques: number; subTechniques: number }> = {};
+    let rulesToDisplay: InactiveRuleDetails[] = [];
+
+    let processedRules = [...inactiveRules];
+
+    processedRules.forEach(rule => {
+        // Calculate gain based on whether this rule covers something *not* covered by currentCoverage
+        let gain = { tactics: 0, techniques: 0, subTechniques: 0 };
+
+        rule.tactics.forEach(tacticId => {
+            // Gain if the tactic is NOT covered by the current selection + active rules
+            if ((currentCoverage[tacticId] ?? 0) === 0) {
+                gain.tactics++;
+            }
+        });
+
+        rule.techniques.forEach(techniqueId => {
+            const isSub = techniqueId.includes('.');
+            const counterType = isSub ? 'subTechniques' : 'techniques';
+            // Gain if the technique/sub-technique is NOT covered by the current selection + active rules
+            if ((currentCoverage[techniqueId] ?? 0) === 0) {
+                gain[counterType]++;
+            }
+        });
+        gainMap[rule.id] = gain;
+
+        const totalGain = gain.tactics + gain.techniques + gain.subTechniques;
+        const isEffective = totalGain > 0;
+        effectivenessMap[rule.id] = isEffective;
+
+    });
+
+    rulesToDisplay = processedRules.filter(rule => !showOnlyEffective || effectivenessMap[rule.id]);
+
+
+    if (!sortColumn) {
+        rulesToDisplay.sort((a, b) => {
+           const gainA = gainMap[a.id];
+           const gainB = gainMap[b.id];
+           const totalGainA = gainA.tactics + gainA.techniques + gainA.subTechniques;
+           const totalGainB = gainB.tactics + gainB.techniques + gainB.subTechniques;
+
+           // Primary sort: Descending total gain
+           if (totalGainB !== totalGainA) {
+             return totalGainB - totalGainA;
+           }
+
+           // Secondary sort: Descending total satisfies
+           const totalSatisfiesA = a.satisfies.tactics + a.satisfies.techniques + a.satisfies.subTechniques;
+           const totalSatisfiesB = b.satisfies.tactics + b.satisfies.techniques + b.satisfies.subTechniques;
+           if (totalSatisfiesB !== totalSatisfiesA) {
+               return totalSatisfiesB - totalSatisfiesA;
+           }
+
+            return a.title.localeCompare(b.title);
+        });
     }
 
-    return inactiveRules.filter(rule => {
-      // Check if the rule covers any tactic below the threshold
-      const coversUnsatisfiedTactic = rule.tactics.some(tacticId =>
-        (currentCoverage[tacticId] ?? 0) < filterThresholds.tactics
-      );
-      if (coversUnsatisfiedTactic) return true;
-
-      // Check if the rule covers any technique/sub-technique below the threshold
-      const coversUnsatisfiedTechnique = rule.techniques.some(techniqueId => {
-        const isSub = techniqueId.includes('.');
-        const threshold = isSub ? filterThresholds.subTechniques : filterThresholds.techniques;
-        return (currentCoverage[techniqueId] ?? 0) < threshold;
-      });
-      if (coversUnsatisfiedTechnique) return true;
-
-      return false; // Rule doesn't cover any unsatisfied items
-    });
-  }, [inactiveRules, currentCoverage, filterThresholds]);
+    return {
+        finalRulesToDisplay: rulesToDisplay,
+        ruleEffectivenessMap: effectivenessMap,
+        incrementalGainMap: gainMap
+    };
+  // Dependency array now includes currentCoverage
+  }, [inactiveRules, currentCoverage, showOnlyEffective, sortColumn]);
 
 
   return (
@@ -232,22 +330,37 @@ export function InactiveRulesExplorer() {
 
       {!isLoading && !error && (
         <>
-          {/* Correctly pass props to a single instance */}
-          <InactiveRulesFilters
-            thresholds={filterThresholds}
-            onChange={setFilterThresholds}
-          />
+          <div className="flex justify-end mb-4"> {/* Container for filters and export button */}
+            <InactiveRulesFilters
+              showOnlyEffective={showOnlyEffective}
+              onShowOnlyEffectiveChange={setShowOnlyEffective}
+            />
+             <Button
+                onClick={handleExportCsv}
+                disabled={selectedRuleIds.size === 0}
+                variant="outline"
+                size="sm"
+                className="ml-4 text-slate-100" // Added margin
+             >
+                <Download className="mr-2 h-4 w-4" />
+                Export Selected ({selectedRuleIds.size})
+             </Button>
+          </div>
           <InactiveRulesTable
-            rules={filteredRules}
+            rules={finalRulesToDisplay}
             selectedRuleIds={selectedRuleIds}
+            ruleEffectiveness={ruleEffectivenessMap}
+            incrementalGainMap={incrementalGainMap} // Pass the gain map
             onRuleSelectionChange={handleRuleSelectionChange}
-            onViewContentClick={handleViewContentClick} // Pass handler to table
-            // TODO: Pass sorting state and handlers
+            onViewContentClick={handleViewContentClick}
+            sortColumn={sortColumn}
+            sortDirection={sortDirection}
+            onSortChange={handleSortChange}
           />
         </>
       )}
 
-      {/* Rule Content Modal */}
+      {/* Rule Content Modal (remains the same) */}
       <Dialog open={isModalOpen} onOpenChange={handleModalOpenChange}>
         <DialogContent className="sm:max-w-3xl md:max-w-4xl lg:max-w-5xl xl:max-w-6xl max-h-[90vh] flex flex-col bg-slate-900 border shadow-lg">
           <DialogHeader className="pr-16 relative">
@@ -256,7 +369,6 @@ export function InactiveRulesExplorer() {
               <span className="truncate text-slate-100">Rule: {selectedRuleForContent?.title ?? 'N/A'}</span>
               <span className="text-sm text-slate-400 ml-2">({selectedRuleForContent?.id ?? 'N/A'})</span>
             </DialogTitle>
-             {/* Explicit close button */}
              <DialogClose asChild>
                 <Button
                     variant="ghost"
@@ -298,7 +410,7 @@ export function InactiveRulesExplorer() {
                </pre>
              </div>
            )}
-            {contentLoadingState === 'idle' && !ruleContent && ( // Removed redundant check
+            {contentLoadingState === 'idle' && !ruleContent && (
               <p className="text-center text-muted-foreground italic">Rule content not available or empty.</p>
             )}
          </div>
