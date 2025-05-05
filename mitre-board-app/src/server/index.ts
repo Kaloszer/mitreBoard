@@ -65,7 +65,7 @@ program
   .version('0.0.1')
   .description('MITRE ATT&CK Board Server')
   .requiredOption('-d, --directory <path>', 'Path to the directory containing ACTIVE YAML analytic rules')
-  .option('-dn, --directory-not-implemented <path>', 'Path to the directory containing NOT IMPLEMENTED YAML analytic rules')
+  .option('-n, --directory-not-implemented <path>', 'Path to the directory containing NOT IMPLEMENTED YAML analytic rules') // Changed -dn to -n
   .parse(process.argv);
 
 const options = program.opts();

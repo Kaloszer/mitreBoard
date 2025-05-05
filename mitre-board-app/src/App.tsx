@@ -243,13 +243,16 @@ function App() {
    return (
      <div className="min-h-screen bg-slate-950 text-foreground p-4 md:p-6 lg:p-8">
       <div className="max-w-[1400px] mx-auto">
-        {/* Pass view state and toggle function to header */}
-        <MitreBoardHeader
-          currentView={currentView}
-          onToggleView={() => setCurrentView(prev => prev === 'board' ? 'inactiveExplorer' : 'board')}
-        />
+         {/* Pass view state and toggle function to header */}
+         <MitreBoardHeader
+           currentView={currentView}
+           onToggleView={() => {
+             console.log('Toggling view...'); // Add console log
+             setCurrentView(prev => prev === 'board' ? 'inactiveExplorer' : 'board');
+           }}
+         />
 
-        {/* Conditional Rendering based on currentView */}
+         {/* Conditional Rendering based on currentView */}
         {currentView === 'board' && (
           <>
             {/* Add Controls Section */}
