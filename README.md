@@ -32,6 +32,7 @@ The application can be configured to download analytical rules directly from Git
     GITHUB_PAT=your_github_personal_access_token
     ```
     The application will automatically use this token for authenticated API requests.
+    Once you have the rules downloaded and would like just to run the app add the `--prefer-cache` flag when running the app. This will utilize the existing `..github-rule-cache` folder for existing rules.
 
 ## Inactive Rule Explorer
 
