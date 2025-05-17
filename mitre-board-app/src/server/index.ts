@@ -488,6 +488,7 @@ async function startServer() {
         processActiveRules(parsedActiveRules);
 
         // Parse and process INACTIVE rules (if directory provided)
+        // If no local inactive rules directory is provided, fall back to fetching rules from GitHub.
         if (!inactiveRulesDirectoryPath) {
             if (preferCache) {
                 // --- If --prefer-cache, skip prompt and load from cache only ---
