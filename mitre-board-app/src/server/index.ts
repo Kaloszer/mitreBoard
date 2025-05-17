@@ -2,6 +2,9 @@ import { program } from 'commander';
 import path from 'path';
 import fs from 'fs';
 import YAML from 'yaml'; // Import YAML parser
+import inquirer from 'inquirer';
+import { fetchRulesFromGitHubRepo } from './githubFetcher';
+import type { GitHubRuleSourceConfig, FetchedRuleFile } from './types';
 
 // --- Types ---
 interface MitreObject {
@@ -56,9 +59,11 @@ interface InactiveRuleDetails extends SimpleRuleInfo {
         techniques: number; // Base techniques only (Txxxx)
         subTechniques: number; // Sub-techniques only (Txxxx.xxx)
     };
+    sourceName?: string; // <-- add this for UI indication
 }
 let inactiveRulesData: InactiveRuleDetails[] = [];
 let inactiveRuleContentPathById: Record<string, string> = {};
+let inactiveRuleContentStringById: Record<string, string> = {};
 
 // --- Command Line Argument Parsing ---
 program
@@ -66,9 +71,11 @@ program
   .description('MITRE ATT&CK Board Server')
   .requiredOption('-d, --directory <path>', 'Path to the directory containing ACTIVE YAML analytic rules')
   .option('-n, --directory-not-implemented <path>', 'Path to the directory containing NOT IMPLEMENTED YAML analytic rules') // Changed -dn to -n
+  .option('--prefer-cache', 'Prefer cached GitHub rules if available') // <-- new flag
   .parse(process.argv);
 
 const options = program.opts();
+const preferCache = !!options.preferCache;
 const activeRulesDirectoryPath = path.resolve(options.directory); // Resolve to absolute path
 const inactiveRulesDirectoryPath = options.directoryNotImplemented ? path.resolve(options.directoryNotImplemented) : null; // Resolve if provided
 
@@ -370,6 +377,107 @@ function processInactiveRules(parsedData: { rawRules: RuleYaml[], contentPaths: 
     console.log(`Processed ${inactiveRulesData.length} inactive rules.`);
 }
 
+// --- GitHub and Local Inactive Rule Processing ---
+function parseAndProcessGitHubRules(
+    fetchedFiles: FetchedRuleFile[]
+): { processedRules: InactiveRuleDetails[], contentStrings: Record<string, string> } {
+    console.log(`Parsing ${fetchedFiles.length} YAML files fetched from GitHub...`);
+    const rawRules: (RuleYaml & { sourceName: string })[] = [];
+    const contentStrings: Record<string, string> = {};
+    const seenRuleIdsThisFetch = new Set<string>();
+
+    for (const file of fetchedFiles) {
+        try {
+            const doc = YAML.parse(file.content) as RuleYaml | null;
+
+            if (doc && doc.id) {
+                const originalRuleId = doc.id.trim();
+                const namespacedRuleId = `${file.sourceName}:${originalRuleId}`;
+
+                if (seenRuleIdsThisFetch.has(namespacedRuleId)) {
+                    console.warn(`Duplicate rule ID '${namespacedRuleId}' (from path ${file.path}) in source '${file.sourceName}' during this fetch. Skipping subsequent.`);
+                    continue;
+                }
+                seenRuleIdsThisFetch.add(namespacedRuleId);
+
+                const normalizedRule: RuleYaml & { sourceName: string } = {
+                    ...doc,
+                    id: namespacedRuleId,
+                    title: (doc.title ?? doc.name ?? originalRuleId).trim(),
+                    description: (doc.description ?? 'No description available.').trim(),
+                    tactics: (doc.tactics ?? []).map(t => typeof t === 'string' ? t.trim() : '').filter(Boolean),
+                    relevantTechniques: (doc.relevantTechniques ?? []).map(t => typeof t === 'string' ? t.trim() : '').filter(Boolean),
+                    sourceName: file.sourceName,
+                };
+                rawRules.push(normalizedRule);
+                contentStrings[namespacedRuleId] = file.content;
+            } else if (doc) {
+                console.warn(`Skipping rule from GitHub source ${file.sourceName}, path ${file.path}: Missing 'id' field in YAML.`);
+            }
+        } catch (error) {
+            console.error(`Error parsing YAML from GitHub-fetched file ${file.path} (source ${file.sourceName}):`, error);
+        }
+    }
+
+    const processedRules: InactiveRuleDetails[] = [];
+    for (const rule of rawRules) {
+        const techniques = rule.relevantTechniques ?? [];
+        let techniqueCount = 0;
+        let subTechniqueCount = 0;
+        techniques.forEach(techId => {
+            if (techId.includes('.')) subTechniqueCount++;
+            else techniqueCount++;
+        });
+        processedRules.push({
+            id: rule.id,
+            title: rule.title!,
+            description: rule.description!,
+            tactics: rule.tactics ?? [],
+            techniques: techniques,
+            satisfies: {
+                tactics: (rule.tactics ?? []).length,
+                techniques: techniqueCount,
+                subTechniques: subTechniqueCount,
+            },
+            sourceName: rule.sourceName,
+        });
+    }
+    console.log(`Successfully processed ${processedRules.length} inactive rules from GitHub sources.`);
+    return { processedRules, contentStrings };
+}
+
+function processLocalInactiveRules(parsedData: { rawRules: RuleYaml[], contentPaths: Record<string, string> }) {
+    const processedRules: InactiveRuleDetails[] = [];
+    for (const rule of parsedData.rawRules) {
+        const techniques = rule.relevantTechniques ?? [];
+        let techniqueCount = 0;
+        let subTechniqueCount = 0;
+        techniques.forEach(techId => {
+            if (techId.includes('.')) subTechniqueCount++;
+            else techniqueCount++;
+        });
+        processedRules.push({
+            id: rule.id,
+            title: rule.title ?? rule.id,
+            description: rule.description ?? '',
+            tactics: rule.tactics ?? [],
+            techniques: techniques,
+            satisfies: {
+                tactics: (rule.tactics ?? []).length,
+                techniques: techniqueCount,
+                subTechniques: subTechniqueCount,
+            }
+        });
+    }
+    inactiveRulesData = processedRules;
+    inactiveRuleContentPathById = parsedData.contentPaths;
+    inactiveRuleContentStringById = {};
+    console.log(`Processed ${inactiveRulesData.length} inactive rules from local directory.`);
+}
+
+// --- Add endpoint for inactive rule sources ---
+let lastRuleSourcesConfig: GitHubRuleSourceConfig[] = []; // Store for UI endpoint
+
 // --- Server Startup Logic ---
 async function startServer() {
     try {
@@ -380,9 +488,114 @@ async function startServer() {
         processActiveRules(parsedActiveRules);
 
         // Parse and process INACTIVE rules (if directory provided)
-        if (inactiveRulesDirectoryPath) {
+        if (!inactiveRulesDirectoryPath) {
+            if (preferCache) {
+                // --- If --prefer-cache, skip prompt and load from cache only ---
+                let ruleSourcesConfig: GitHubRuleSourceConfig[] = [];
+                try {
+                    const configFilePath = path.resolve(process.cwd(), 'rule-sources.config.json');
+                    if (fs.existsSync(configFilePath)) {
+                        const configFileContent = fs.readFileSync(configFilePath, 'utf8');
+                        ruleSourcesConfig = JSON.parse(configFileContent);
+                        lastRuleSourcesConfig = ruleSourcesConfig;
+                        console.log(`Loaded ${ruleSourcesConfig.length} rule source configurations from ${configFilePath}.`);
+                    } else {
+                        console.warn("`rule-sources.config.json` not found at project root. No GitHub sources to fetch from.");
+                    }
+                } catch (err) {
+                    console.error("Error loading or parsing `rule-sources.config.json`:", err);
+                }
+
+                const allFetchedFilesFromAllSources: FetchedRuleFile[] = [];
+                for (const sourceConfig of ruleSourcesConfig) {
+                    if (sourceConfig.enabled && sourceConfig.type === 'github') {
+                        try {
+                            const fetchedFromThisSource = await fetchRulesFromGitHubRepo(
+                                sourceConfig,
+                                { useCache: true }
+                            );
+                            allFetchedFilesFromAllSources.push(...fetchedFromThisSource);
+                        } catch (error) {
+                            console.error(`Error fetching rules from GitHub source '${sourceConfig.name}':`, error);
+                        }
+                    }
+                }
+
+                if (allFetchedFilesFromAllSources.length > 0) {
+                    const { processedRules, contentStrings } = parseAndProcessGitHubRules(allFetchedFilesFromAllSources);
+                    inactiveRulesData = processedRules;
+                    inactiveRuleContentStringById = contentStrings;
+                    inactiveRuleContentPathById = {};
+                } else {
+                    console.log("No rules loaded from cache (or no sources configured/enabled).");
+                    inactiveRulesData = [];
+                    inactiveRuleContentStringById = {};
+                    inactiveRuleContentPathById = {};
+                }
+            } else {
+                const answers = await inquirer.prompt([
+                    {
+                        type: 'confirm',
+                        name: 'downloadFromGitHub',
+                        message: 'Inactive rules directory (-n) not specified. Would you like to download rules from configured GitHub repositories?',
+                        default: true,
+                    }
+                ]);
+
+                if (answers.downloadFromGitHub) {
+                    console.log("User opted to download inactive rules from GitHub.");
+                    let ruleSourcesConfig: GitHubRuleSourceConfig[] = [];
+                    try {
+                        const configFilePath = path.resolve(process.cwd(), 'rule-sources.config.json');
+                        if (fs.existsSync(configFilePath)) {
+                            const configFileContent = fs.readFileSync(configFilePath, 'utf8');
+                            ruleSourcesConfig = JSON.parse(configFileContent);
+                            lastRuleSourcesConfig = ruleSourcesConfig; // <-- store for UI
+                            console.log(`Loaded ${ruleSourcesConfig.length} rule source configurations from ${configFilePath}.`);
+                        } else {
+                            console.warn("`rule-sources.config.json` not found at project root. No GitHub sources to fetch from.");
+                        }
+                    } catch (err) {
+                        console.error("Error loading or parsing `rule-sources.config.json`:", err);
+                    }
+
+                    const allFetchedFilesFromAllSources: FetchedRuleFile[] = [];
+                    for (const sourceConfig of ruleSourcesConfig) {
+                        if (sourceConfig.enabled && sourceConfig.type === 'github') {
+                            try {
+                                const fetchedFromThisSource = await fetchRulesFromGitHubRepo(
+                                    sourceConfig,
+                                    { preferCache } // <-- pass the flag
+                                );
+                                allFetchedFilesFromAllSources.push(...fetchedFromThisSource);
+                            } catch (error) {
+                                console.error(`Error fetching rules from GitHub source '${sourceConfig.name}':`, error);
+                            }
+                        }
+                    }
+
+                    if (allFetchedFilesFromAllSources.length > 0) {
+                        const { processedRules, contentStrings } = parseAndProcessGitHubRules(allFetchedFilesFromAllSources);
+                        inactiveRulesData = processedRules;
+                        inactiveRuleContentStringById = contentStrings;
+                        inactiveRuleContentPathById = {};
+                    } else {
+                        console.log("No rules fetched from GitHub (or no sources configured/enabled).");
+                        inactiveRulesData = [];
+                        inactiveRuleContentStringById = {};
+                        inactiveRuleContentPathById = {};
+                    }
+                } else {
+                    console.log("User opted not to download inactive rules. No inactive rules will be loaded.");
+                    inactiveRulesData = [];
+                    inactiveRuleContentStringById = {};
+                    inactiveRuleContentPathById = {};
+                }
+            }
+        } else {
+            console.log(`Using local inactive rules directory: ${inactiveRulesDirectoryPath}`);
             const parsedInactiveRules = parseRuleFiles(inactiveRulesDirectoryPath);
-            processInactiveRules(parsedInactiveRules);
+            processLocalInactiveRules(parsedInactiveRules);
         }
 
         const server = Bun.serve({
@@ -428,32 +641,66 @@ async function startServer() {
                 });
             }
 
+            // Returns available sources for INACTIVE rules
+            if (url.pathname === '/api/inactive-rule-sources') {
+                return new Response(JSON.stringify(lastRuleSourcesConfig), {
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            }
+
             // Returns content for ANY rule (active or inactive) by ID
             if (url.pathname === '/api/rule-content') {
                 const ruleId = url.searchParams.get('ruleId');
                 if (!ruleId) {
                     return new Response("Missing 'ruleId' query parameter", { status: 400 });
                 }
-                // Check both active and inactive paths
-                const filePath = activeRuleContentPathById[ruleId] ?? inactiveRuleContentPathById[ruleId];
-                if (!filePath) {
-                    return new Response(`Rule content not found for ID: ${ruleId}`, { status: 404 });
-                }
-                try {
-                    const file = Bun.file(filePath);
-                    const exists = await file.exists();
-                    if (!exists) {
-                         console.error(`File path found for rule ${ruleId}, but file does not exist: ${filePath}`);
-                         return new Response(`Rule content file not found for ID: ${ruleId}`, { status: 404 });
-                    }
-                    // Return raw YAML content
-                    return new Response(file, {
-                        headers: { 'Content-Type': 'text/yaml' }, // Indicate YAML content type
+
+                // 1. Check for content string (for GitHub-fetched inactive rules)
+                if (inactiveRuleContentStringById[ruleId]) {
+                    console.log(`Serving content for inactive rule '${ruleId}' from in-memory string (GitHub).`);
+                    return new Response(inactiveRuleContentStringById[ruleId], {
+                        headers: { 'Content-Type': 'text/yaml' },
                     });
-                } catch (err) {
-                    console.error(`Error reading rule content file ${filePath} for rule ${ruleId}:`, err);
-                    return new Response("Error reading rule content", { status: 500 });
                 }
+
+                // 2. Check for file path (for local active rules)
+                if (activeRuleContentPathById[ruleId]) {
+                    const filePath = activeRuleContentPathById[ruleId];
+                    console.log(`Serving content for active rule '${ruleId}' from file path: ${filePath}`);
+                    try {
+                        const file = Bun.file(filePath);
+                        const exists = await file.exists();
+                        if (!exists) {
+                            console.error(`File path found for active rule ${ruleId}, but file does not exist: ${filePath}`);
+                            return new Response(`Rule content file not found for ID: ${ruleId}`, { status: 404 });
+                        }
+                        return new Response(file, { headers: { 'Content-Type': 'text/yaml' } });
+                    } catch (err) {
+                        console.error(`Error reading rule content file ${filePath} for active rule ${ruleId}:`, err);
+                        return new Response("Error reading rule content", { status: 500 });
+                    }
+                }
+
+                // 3. Check for file path (for local inactive rules, if -n was used)
+                if (inactiveRuleContentPathById[ruleId]) {
+                    const filePath = inactiveRuleContentPathById[ruleId];
+                    console.log(`Serving content for inactive rule '${ruleId}' from file path (local): ${filePath}`);
+                    try {
+                        const file = Bun.file(filePath);
+                        const exists = await file.exists();
+                        if (!exists) {
+                            console.error(`File path found for local inactive rule ${ruleId}, but file does not exist: ${filePath}`);
+                            return new Response(`Rule content file not found for ID: ${ruleId}`, { status: 404 });
+                        }
+                        return new Response(file, { headers: { 'Content-Type': 'text/yaml' } });
+                    } catch (err) {
+                        console.error(`Error reading rule content file ${filePath} for local inactive rule ${ruleId}:`, err);
+                        return new Response("Error reading rule content", { status: 500 });
+                    }
+                }
+
+                // If not found in any store
+                return new Response(`Rule content not found for ID: ${ruleId}`, { status: 404 });
             }
 
             // --- Static File Serving ---

@@ -40,12 +40,13 @@ interface InactiveRulesTableProps {
   rules: InactiveRuleDetails[];
   selectedRuleIds: Set<string>;
   ruleEffectiveness: Record<string, boolean>;
-  incrementalGainMap: Record<string, IncrementalGain>; // Add prop for the gain map
+  incrementalGainMap: Record<string, IncrementalGain>;
   onRuleSelectionChange: (ruleId: string, isSelected: boolean) => void;
   onViewContentClick: (rule: InactiveRuleDetails) => void;
   sortColumn: SortableColumn | null;
   sortDirection: SortDirection;
   onSortChange: (column: SortableColumn) => void;
+  processingRuleId?: string | null;
 }
 
 // Helper function for text truncation
@@ -55,16 +56,19 @@ const truncateText = (text: string | undefined | null, maxLength: number): strin
   return text.substring(0, maxLength) + '...';
 };
 
+import { Spinner } from "@/components/ui/spinner";
+
 export function InactiveRulesTable({
   rules,
   selectedRuleIds,
   ruleEffectiveness,
-  incrementalGainMap, // Destructure the new prop
+  incrementalGainMap,
   onRuleSelectionChange,
   onViewContentClick,
   sortColumn,
   sortDirection,
   onSortChange,
+  processingRuleId,
 }: Readonly<InactiveRulesTableProps>) {
 
   const sortedRules = useMemo(() => {
@@ -204,33 +208,41 @@ export function InactiveRulesTable({
                 >
                   {/* Checkbox Cell */}
                   <TableCell className="px-4 align-top pt-3">
-                    <Checkbox
-                      checked={selectedRuleIds.has(rule.id)}
-                      onCheckedChange={(checked) => onRuleSelectionChange(rule.id, !!checked)}
-                      aria-label={`Select rule ${rule.title}`}
-                      className={cn("border-slate-500 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground", !isEffective && "opacity-50")}
-                    />
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        checked={selectedRuleIds.has(rule.id)}
+                        onCheckedChange={(checked) => onRuleSelectionChange(rule.id, !!checked)}
+                        aria-label={`Select rule ${rule.title}`}
+                        className={cn("border-slate-500 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground", !isEffective && "opacity-50")}
+                      />
+                      {processingRuleId === rule.id && (
+                        <Spinner className="h-4 w-4 text-white" />
+                      )}
+                    </div>
                   </TableCell>
                   {/* Name/Description Cell */}
                    <TableCell className="font-medium px-4 py-3 align-top overflow-hidden">
-                     <Tooltip>
-                       <TooltipTrigger asChild>
-                         <button
-                           onClick={() => onViewContentClick(rule)}
-                           className={cn(
-                               "text-left hover:underline focus:outline-none focus:ring-1 focus:ring-primary rounded px-1 py-0.5 -ml-1 block w-full truncate",
-                               !isEffective && "hover:text-slate-300" // Adjust hover color when ineffective
-                           )}
-                         >
-                           <div className={cn("text-slate-100 truncate", !isEffective && "text-slate-400")}>{truncatedTitle}</div>
-                         </button>
-                       </TooltipTrigger>
-                       {rule.title && rule.title.length > MAX_CHARS && (
-                         <TooltipContent className="bg-slate-900 text-slate-100 border border-slate-700 max-w-md">
-                           <p>{rule.title}</p>
-                         </TooltipContent>
-                       )}
-                     </Tooltip>
+                     <div className="flex items-center gap-2">
+                       <Tooltip>
+                         <TooltipTrigger asChild>
+                           <button
+                             onClick={() => onViewContentClick(rule)}
+                             className={cn(
+                                 "text-left hover:underline focus:outline-none focus:ring-1 focus:ring-primary rounded px-1 py-0.5 -ml-1 block w-full truncate",
+                                 !isEffective && "hover:text-slate-300"
+                             )}
+                           >
+                             <div className={cn("text-slate-100 truncate", !isEffective && "text-slate-400")}>{truncatedTitle}</div>
+                           </button>
+                         </TooltipTrigger>
+                         {rule.title && rule.title.length > MAX_CHARS && (
+                           <TooltipContent className="bg-slate-900 text-slate-100 border border-slate-700 max-w-md">
+                             <p>{rule.title}</p>
+                           </TooltipContent>
+                         )}
+                       </Tooltip>
+                       {/* Spinner removed as per feedback */}
+                     </div>
                      <Tooltip>
                         <TooltipTrigger asChild>
                           <div className={cn("text-xs text-slate-400 mt-1 truncate", !isEffective && "text-slate-500")}>{truncatedDescription}</div>
