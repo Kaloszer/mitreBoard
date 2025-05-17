@@ -1,5 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Loader2, AlertTriangle, Code, Copy, X, Download } from 'lucide-react'; // Added Download icon
+import { AlertTriangle, Code, Copy, X, Download } from 'lucide-react';
+import { Spinner } from "@/components/ui/spinner";
+// Sonner Toaster component
+import { Toaster } from "@/components/ui/sonner";
+// Sonner toast function
+import { toast } from "sonner";
 import { InactiveRulesFilters } from './InactiveRulesFilters';
 import { InactiveRulesTable } from './InactiveRulesTable';
 import type { InactiveRuleDetails, SortableColumn, SortDirection } from './InactiveRulesTable';
@@ -21,6 +26,7 @@ export function InactiveRulesExplorer() {
   const [inactiveRules, setInactiveRules] = useState<InactiveRuleDetails[]>([]);
   const [activeRuleCounts, setActiveRuleCounts] = useState<ActiveRuleCounts>({});
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [processingRuleId, setProcessingRuleId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedRuleIds, setSelectedRuleIds] = useState<Set<string>>(new Set());
 
@@ -69,17 +75,120 @@ export function InactiveRulesExplorer() {
     fetchData();
   }, [fetchData]);
 
+  // Calculate coverage including selected rules (for dynamic gain display in table)
+  const currentCoverage = useMemo(() => {
+    const coverage = { ...activeRuleCounts }; // Start with initially active rules
+    const selectedRules = inactiveRules.filter(rule => selectedRuleIds.has(rule.id));
+
+    selectedRules.forEach(rule => {
+      rule.tactics.forEach(tacticId => {
+        coverage[tacticId] = (coverage[tacticId] ?? 0) + 1;
+      });
+      // Important: Count techniques AND their parent techniques if applicable
+      rule.techniques.forEach(techniqueId => {
+        coverage[techniqueId] = (coverage[techniqueId] ?? 0) + 1;
+        // Check if it's a sub-technique (Txxxx.xxx)
+        if (techniqueId.includes('.')) {
+          const parentId = techniqueId.split('.')[0];
+          // Ensure parent exists and avoid double-counting if parent is also listed explicitly
+          if (parentId && parentId !== techniqueId) {
+            coverage[parentId] = (coverage[parentId] ?? 0) + 1;
+          }
+        }
+      });
+    });
+    return coverage;
+  }, [activeRuleCounts, selectedRuleIds, inactiveRules]);
+
+  // --- Calculate incremental gain, effectiveness, and apply filters ---
+  const { finalRulesToDisplay, ruleEffectivenessMap, incrementalGainMap } = useMemo(() => {
+    const effectivenessMap: Record<string, boolean> = {};
+    const gainMap: Record<string, { tactics: number; techniques: number; subTechniques: number }> = {};
+    let rulesToDisplay: InactiveRuleDetails[] = [];
+
+    let processedRules = [...inactiveRules];
+
+    processedRules.forEach(rule => {
+        // Calculate gain based on whether this rule covers something *not* covered by currentCoverage
+        let gain = { tactics: 0, techniques: 0, subTechniques: 0 };
+
+        rule.tactics.forEach(tacticId => {
+            // Gain if the tactic is NOT covered by the current selection + active rules
+            if ((currentCoverage[tacticId] ?? 0) === 0) {
+                gain.tactics++;
+            }
+        });
+
+        rule.techniques.forEach(techniqueId => {
+            const isSub = techniqueId.includes('.');
+            const counterType = isSub ? 'subTechniques' : 'techniques';
+            // Gain if the technique/sub-technique is NOT covered by the current selection + active rules
+            if ((currentCoverage[techniqueId] ?? 0) === 0) {
+                gain[counterType]++;
+            }
+        });
+        gainMap[rule.id] = gain;
+
+        const totalGain = gain.tactics + gain.techniques + gain.subTechniques;
+        const isEffective = totalGain > 0;
+        effectivenessMap[rule.id] = isEffective;
+    });
+
+    rulesToDisplay = processedRules.filter(rule => !showOnlyEffective || effectivenessMap[rule.id]);
+
+    if (!sortColumn) {
+        rulesToDisplay.sort((a, b) => {
+           const gainA = gainMap[a.id];
+           const gainB = gainMap[b.id];
+           const totalGainA = gainA.tactics + gainA.techniques + gainA.subTechniques;
+           const totalGainB = gainB.tactics + gainB.techniques + gainB.subTechniques;
+
+           // Primary sort: Descending total gain
+           if (totalGainB !== totalGainA) {
+             return totalGainB - totalGainA;
+           }
+
+           // Secondary sort: Descending total satisfies
+           const totalSatisfiesA = a.satisfies.tactics + a.satisfies.techniques + a.satisfies.subTechniques;
+           const totalSatisfiesB = b.satisfies.tactics + b.satisfies.techniques + b.satisfies.subTechniques;
+           if (totalSatisfiesB !== totalSatisfiesA) {
+               return totalSatisfiesB - totalSatisfiesA;
+           }
+
+            return a.title.localeCompare(b.title);
+        });
+    }
+
+    return {
+        finalRulesToDisplay: rulesToDisplay,
+        ruleEffectivenessMap: effectivenessMap,
+        incrementalGainMap: gainMap
+    };
+  }, [inactiveRules, currentCoverage, showOnlyEffective, sortColumn]);
+
   const handleRuleSelectionChange = useCallback((ruleId: string, isSelected: boolean) => {
+    setProcessingRuleId(ruleId);
     setSelectedRuleIds(prev => {
       const newSet = new Set(prev);
       if (isSelected) {
         newSet.add(ruleId);
+        // Find the rule and its gain for the toast
+        const rule = inactiveRules.find(r => r.id === ruleId);
+        const gain = incrementalGainMap[ruleId] || { tactics: 0, techniques: 0, subTechniques: 0 };
+        if (rule) {
+          toast(`Rule: ${rule.title} added`, {
+            id: `rule-added-${rule.id}`, // Add a unique ID for the toast
+            description: `Coverage gain of ${gain.tactics}/${gain.techniques}/${gain.subTechniques}!`,
+            duration: 3500,
+          });
+        }
       } else {
         newSet.delete(ruleId);
       }
       return newSet;
     });
-  }, []);
+    setTimeout(() => setProcessingRuleId(null), 100);
+  }, [inactiveRules, incrementalGainMap]);
 
   const handleSortChange = useCallback((column: SortableColumn) => {
     setSortColumn(prevColumn => {
@@ -95,7 +204,7 @@ export function InactiveRulesExplorer() {
     });
   }, []);
 
-  // --- Modal Logic (remains the same) ---
+  // --- Modal Logic ---
   const fetchRuleContent = useCallback(async (ruleId: string) => {
     setContentLoadingState('loading');
     setContentError(null);
@@ -133,13 +242,13 @@ export function InactiveRulesExplorer() {
     }
   };
 
-   const copyToClipboard = (text: string) => {
+  const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text).then(() => {
       console.log("Copied to clipboard!");
     }).catch(err => {
       console.error("Failed to copy text: ", err);
-     });
-   };
+    });
+  };
   // --- End Modal Logic ---
 
   // --- CSV Export Logic ---
@@ -199,119 +308,17 @@ export function InactiveRulesExplorer() {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-
-  }, [inactiveRules, selectedRuleIds, activeRuleCounts]); // Depends on these states
-
-
-  // Calculate coverage including selected rules (for dynamic gain display in table)
-  const currentCoverage = useMemo(() => {
-    const coverage = { ...activeRuleCounts }; // Start with initially active rules
-    const selectedRules = inactiveRules.filter(rule => selectedRuleIds.has(rule.id));
-
-    selectedRules.forEach(rule => {
-      rule.tactics.forEach(tacticId => {
-        coverage[tacticId] = (coverage[tacticId] ?? 0) + 1;
-      });
-      // Important: Count techniques AND their parent techniques if applicable
-      rule.techniques.forEach(techniqueId => {
-        coverage[techniqueId] = (coverage[techniqueId] ?? 0) + 1;
-        // Check if it's a sub-technique (Txxxx.xxx)
-        if (techniqueId.includes('.')) {
-          const parentId = techniqueId.split('.')[0];
-          // Ensure parent exists and avoid double-counting if parent is also listed explicitly
-          if (parentId && parentId !== techniqueId) {
-             // Check if parent is already counted by this rule or another selected rule
-             // This simple increment might overcount parents if multiple subs are selected under one parent.
-             // A more robust approach might use Sets to track covered parents.
-             // For now, we'll stick to the simpler increment, assuming rule definitions are clean.
-             coverage[parentId] = (coverage[parentId] ?? 0) + 1;
-          }
-        }
-      });
-    });
-    // console.log("DEBUG: Current Coverage (incl. selected):", coverage);
-    return coverage;
-  }, [activeRuleCounts, selectedRuleIds, inactiveRules]);
-
-
- // --- Calculate incremental gain, effectiveness, and apply filters ---
- const { finalRulesToDisplay, ruleEffectivenessMap, incrementalGainMap } = useMemo(() => {
-    const effectivenessMap: Record<string, boolean> = {};
-    const gainMap: Record<string, { tactics: number; techniques: number; subTechniques: number }> = {};
-    let rulesToDisplay: InactiveRuleDetails[] = [];
-
-    let processedRules = [...inactiveRules];
-
-    processedRules.forEach(rule => {
-        // Calculate gain based on whether this rule covers something *not* covered by currentCoverage
-        let gain = { tactics: 0, techniques: 0, subTechniques: 0 };
-
-        rule.tactics.forEach(tacticId => {
-            // Gain if the tactic is NOT covered by the current selection + active rules
-            if ((currentCoverage[tacticId] ?? 0) === 0) {
-                gain.tactics++;
-            }
-        });
-
-        rule.techniques.forEach(techniqueId => {
-            const isSub = techniqueId.includes('.');
-            const counterType = isSub ? 'subTechniques' : 'techniques';
-            // Gain if the technique/sub-technique is NOT covered by the current selection + active rules
-            if ((currentCoverage[techniqueId] ?? 0) === 0) {
-                gain[counterType]++;
-            }
-        });
-        gainMap[rule.id] = gain;
-
-        const totalGain = gain.tactics + gain.techniques + gain.subTechniques;
-        const isEffective = totalGain > 0;
-        effectivenessMap[rule.id] = isEffective;
-
-    });
-
-    rulesToDisplay = processedRules.filter(rule => !showOnlyEffective || effectivenessMap[rule.id]);
-
-
-    if (!sortColumn) {
-        rulesToDisplay.sort((a, b) => {
-           const gainA = gainMap[a.id];
-           const gainB = gainMap[b.id];
-           const totalGainA = gainA.tactics + gainA.techniques + gainA.subTechniques;
-           const totalGainB = gainB.tactics + gainB.techniques + gainB.subTechniques;
-
-           // Primary sort: Descending total gain
-           if (totalGainB !== totalGainA) {
-             return totalGainB - totalGainA;
-           }
-
-           // Secondary sort: Descending total satisfies
-           const totalSatisfiesA = a.satisfies.tactics + a.satisfies.techniques + a.satisfies.subTechniques;
-           const totalSatisfiesB = b.satisfies.tactics + b.satisfies.techniques + b.satisfies.subTechniques;
-           if (totalSatisfiesB !== totalSatisfiesA) {
-               return totalSatisfiesB - totalSatisfiesA;
-           }
-
-            return a.title.localeCompare(b.title);
-        });
-    }
-
-    return {
-        finalRulesToDisplay: rulesToDisplay,
-        ruleEffectivenessMap: effectivenessMap,
-        incrementalGainMap: gainMap
-    };
-  // Dependency array now includes currentCoverage
-  }, [inactiveRules, currentCoverage, showOnlyEffective, sortColumn]);
-
+  }, [inactiveRules, selectedRuleIds, activeRuleCounts]);
 
   return (
-    <div className="mt-6">
+    <div className="mt-6 relative">
+      {/* No global overlay spinner */}
       <h2 className="text-2xl font-semibold mb-4 text-slate-100">Inactive Rule Explorer</h2>
 
       {isLoading && (
         <div className="flex items-center justify-center h-60">
           <div className="animate-pulse flex flex-col items-center">
-            <Loader2 className="h-10 w-10 text-primary animate-spin mb-3" />
+            <Spinner className="h-10 w-10 text-white mb-3" />
             <p className="text-muted-foreground">Loading inactive rules...</p>
           </div>
         </div>
@@ -350,17 +357,18 @@ export function InactiveRulesExplorer() {
             rules={finalRulesToDisplay}
             selectedRuleIds={selectedRuleIds}
             ruleEffectiveness={ruleEffectivenessMap}
-            incrementalGainMap={incrementalGainMap} // Pass the gain map
+            incrementalGainMap={incrementalGainMap}
             onRuleSelectionChange={handleRuleSelectionChange}
             onViewContentClick={handleViewContentClick}
             sortColumn={sortColumn}
             sortDirection={sortDirection}
             onSortChange={handleSortChange}
+            processingRuleId={processingRuleId}
           />
         </>
       )}
 
-      {/* Rule Content Modal (remains the same) */}
+      {/* Rule Content Modal */}
       <Dialog open={isModalOpen} onOpenChange={handleModalOpenChange}>
         <DialogContent className="sm:max-w-3xl md:max-w-4xl lg:max-w-5xl xl:max-w-6xl max-h-[90vh] flex flex-col bg-slate-900 border shadow-lg">
           <DialogHeader className="pr-16 relative">
@@ -384,7 +392,7 @@ export function InactiveRulesExplorer() {
           <div className="py-4 flex-1 overflow-y-auto pr-2">
             {contentLoadingState === 'loading' && (
               <div className="flex items-center justify-center h-40">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <Spinner className="h-8 w-8 text-white" />
               </div>
             )}
             {contentLoadingState === 'error' && contentError && (
@@ -407,13 +415,13 @@ export function InactiveRulesExplorer() {
                 </Button>
                 <pre className="bg-slate-800 p-4 rounded-md text-sm text-slate-100 whitespace-pre-wrap break-words font-mono max-h-[65vh] overflow-auto">
                   {ruleContent}
-               </pre>
-             </div>
-           )}
+                </pre>
+              </div>
+            )}
             {contentLoadingState === 'idle' && !ruleContent && (
               <p className="text-center text-muted-foreground italic">Rule content not available or empty.</p>
             )}
-         </div>
+          </div>
 
           <DialogFooter className="pt-3 mt-auto">
             <DialogClose asChild>
@@ -422,6 +430,7 @@ export function InactiveRulesExplorer() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <Toaster /> {/* Add Sonner's Toaster component here */}
     </div>
   );
 }

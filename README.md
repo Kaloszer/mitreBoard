@@ -15,7 +15,23 @@ Key features:
 *   Allows viewing the content of rules associated with a technique.
 *   Provides an option to filter the view to show only techniques with zero rule coverage.
 *   Exports a list of techniques with missing coverage to a CSV file.
-*   Includes an "Inactive Rule Explorer" to review rules present in the source directory but not currently active (based on a separate API endpoint), allowing you to assess their potential coverage gain.
+*   **External Rule Sources**: Fetches analytical rules from configured GitHub repositories (e.g., Azure Sentinel rules).
+*   **Rule Caching**: Caches downloaded rules locally to improve performance and reduce API calls.
+*   **Configurable Repositories**: Rule sources are defined in `mitre-board-app/rule-sources.config.json`, allowing easy addition or modification of GitHub repositories.
+*   Includes an "Inactive Rule Explorer" to review rules from all sources (local and GitHub) that are not currently active, allowing you to assess their potential coverage gain.
+
+## External Rule Sources & Caching
+
+The application can be configured to download analytical rules directly from GitHub repositories. This is useful for integrating rules from community or commercial sources like Azure Sentinel.
+
+*   **Configuration**: Define your GitHub rule sources in the `mitre-board-app/rule-sources.config.json` file. Each entry specifies the repository owner, name, base path for rules, and specific folders to scan.
+*   **Fetching**: On startup, the application fetches rules from these configured sources.
+*   **Caching**: To speed up subsequent launches and minimize GitHub API usage, fetched rules are cached locally in the `.github-rule-cache` directory within `mitre-board-app`. The application can be configured to prefer cached rules for faster development iterations.
+*   **`GITHUB_PAT` for Rate Limiting**: To avoid GitHub API rate limits, especially with public repositories or frequent fetching, it's highly recommended to create a GitHub Personal Access Token (PAT) with `repo` scope (or `public_repo` if only accessing public repositories). Set this token as an environment variable named `GITHUB_PAT` in a `.env` file within the `mitre-board-app` directory:
+    ```
+    GITHUB_PAT=your_github_personal_access_token
+    ```
+    The application will automatically use this token for authenticated API requests.
 
 ## Inactive Rule Explorer
 

@@ -1,0 +1,13 @@
+[
+  {
+    "name": "AzureSentinelOfficial",
+    "description": "Official Microsoft Sentinel rules from the Azure-Sentinel GitHub repository.",
+    "enabled": true,
+    "type": "github",
+    "repoOwner": "Azure",
+    "repoName": "Azure-Sentinel",
+    "basePath": "Solutions",
+    "ruleFolderNames": ["Analytics Rules","Analytic Rules"],
+    "parserType": "AzureSentinelSolutionsV1"
+  }
+]
